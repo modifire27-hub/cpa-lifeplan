@@ -60,7 +60,7 @@ export default function LandingPage() {
             variants={fadeUp}
             className="text-[16px] leading-[1.6] text-[#6B7684] mb-10"
           >
-            3분이면 충분합니다.<br />
+            5분이면 충분합니다.<br />
             같은 나이대 상위 몇 %인지 바로 확인하세요.
           </motion.p>
 
@@ -203,7 +203,7 @@ export default function LandingPage() {
           무료 재무설계 진단 시작하기
         </motion.button>
         <p className="text-center text-[12px] text-[#B0B8C1] mt-2">
-          약 3~5분 소요 · 비용 없음 · 개인정보 안전 보호
+          약 5~7분 소요 · 비용 없음 · 개인정보 안전 보호
         </p>
       </div>
     </div>
