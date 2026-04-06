@@ -1267,7 +1267,6 @@ export default function DiagnosisPage() {
             <motion.div key={step}
               initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-              {step === 1
               {step === 1 && <Step1 data={data} onChange={updateForm} />}
               {step === 2 && <Step2 data={data} onChange={updateForm} />}
               {step === 3 && <Step3 data={data} onChange={updateForm} />}
