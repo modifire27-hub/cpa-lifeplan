@@ -84,6 +84,8 @@ interface FormData {
   yellowUmbrellaContrib: number
   bookkeepingType: 'simple' | 'double' | 'none'
   annualDividend: number
+  businessTypeCode: string
+  businessTypeName: string
   retirementMonthlyExpense: number
   name: string
   phone: string
@@ -92,6 +94,127 @@ interface FormData {
 }
 
 const TOTAL_STEPS = 7
+
+// ============================================================
+// 업종 데이터
+// ============================================================
+const BUSINESS_TYPE_CODE_MAP: Record<string, string> = {
+  '940100': '작가·작곡가',
+  '940200': '학원 강사',
+  '940300': '보험모집인',
+  '940400': '음료 배달원',
+  '940500': '기타 모집인',
+  '940600': '저술가',
+  '940909': '기타 자영업',
+  '801101': '소아과의원',
+  '801102': '내과의원',
+  '801103': '외과의원',
+  '801104': '한의원',
+  '801200': '치과의원',
+  '801300': '약국',
+  '811001': '독서실',
+  '811002': '학원(입시·보습)',
+  '811003': '음악학원',
+  '811004': '미술학원',
+  '811005': '태권도·체육도장',
+  '721100': 'IT 개발·프로그래밍',
+  '721200': '시스템 통합 서비스',
+  '731000': '디자인',
+  '741000': '광고업',
+  '742000': '건축설계·엔지니어링',
+  '749000': '기타 전문 서비스',
+  '521000': '일반 소매업',
+  '522000': '음식료품 소매',
+  '551000': '한식 음식점',
+  '552000': '중식 음식점',
+  '553000': '일식 음식점',
+  '554000': '서양식 음식점',
+  '555000': '카페·커피숍',
+  '601000': '숙박업',
+  '701000': '부동산 중개',
+  '702000': '부동산 임대업',
+  '451000': '건설업',
+  '452000': '인테리어·리모델링',
+}
+
+const BUSINESS_CATEGORIES: {
+  label: string
+  items: { code: string; name: string }[]
+}[] = [
+  {
+    label: '의료·보건',
+    items: [
+      { code: '801101', name: '소아과의원' },
+      { code: '801102', name: '내과의원' },
+      { code: '801103', name: '외과의원' },
+      { code: '801104', name: '한의원' },
+      { code: '801200', name: '치과의원' },
+      { code: '801300', name: '약국' },
+    ],
+  },
+  {
+    label: '교육·학원',
+    items: [
+      { code: '811001', name: '독서실' },
+      { code: '811002', name: '학원(입시·보습)' },
+      { code: '811003', name: '음악학원' },
+      { code: '811004', name: '미술학원' },
+      { code: '811005', name: '태권도·체육도장' },
+    ],
+  },
+  {
+    label: 'IT·전문직',
+    items: [
+      { code: '721100', name: 'IT 개발·프로그래밍' },
+      { code: '721200', name: '시스템 통합 서비스' },
+      { code: '731000', name: '디자인' },
+      { code: '741000', name: '광고업' },
+      { code: '742000', name: '건축설계·엔지니어링' },
+      { code: '749000', name: '기타 전문 서비스' },
+    ],
+  },
+  {
+    label: '도소매',
+    items: [
+      { code: '521000', name: '일반 소매업' },
+      { code: '522000', name: '음식료품 소매' },
+    ],
+  },
+  {
+    label: '음식·숙박',
+    items: [
+      { code: '551000', name: '한식 음식점' },
+      { code: '552000', name: '중식 음식점' },
+      { code: '553000', name: '일식 음식점' },
+      { code: '554000', name: '서양식 음식점' },
+      { code: '555000', name: '카페·커피숍' },
+      { code: '601000', name: '숙박업' },
+    ],
+  },
+  {
+    label: '부동산',
+    items: [
+      { code: '701000', name: '부동산 중개' },
+      { code: '702000', name: '부동산 임대업' },
+    ],
+  },
+  {
+    label: '건설·인테리어',
+    items: [
+      { code: '451000', name: '건설업' },
+      { code: '452000', name: '인테리어·리모델링' },
+    ],
+  },
+  {
+    label: '기타 서비스',
+    items: [
+      { code: '940100', name: '작가·작곡가' },
+      { code: '940200', name: '학원 강사' },
+      { code: '940300', name: '보험모집인' },
+      { code: '940909', name: '기타 자영업' },
+    ],
+  },
+]
 
 // ============================================================
 // Utility
@@ -137,7 +260,7 @@ function NumberInput({
   label: string; value: number; onChange: (v: number) => void
   unit?: string; placeholder?: string; readOnly?: boolean; hint?: string; allowDecimal?: boolean
 }) {
-  const [raw, setRaw] = useState('')
+  const [, setRaw] = useState('')
   return (
     <div className="mb-4">
       {label && <FieldLabel>{label}</FieldLabel>}
@@ -310,6 +433,139 @@ function RealEstateCard({ item, index, onUpdate, onRemove }: {
 }
 
 // ============================================================
+// BusinessTypeSelector — 업종 선택 컴포넌트
+// ============================================================
+function BusinessTypeSelector({
+  code, name, onChange
+}: {
+  code: string
+  name: string
+  onChange: (code: string, name: string) => void
+}) {
+  const [mode, setMode] = useState<'ask' | 'code' | 'category'>('ask')
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const [codeInput, setCodeInput] = useState(code || '')
+
+  const handleCodeChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, '').slice(0, 6)
+    setCodeInput(cleaned)
+    const matched = BUSINESS_TYPE_CODE_MAP[cleaned]
+    onChange(cleaned, matched || '')
+  }
+
+  const handleCategorySelect = (itemCode: string, itemName: string) => {
+    onChange(itemCode, itemName)
+  }
+
+  if (mode === 'ask') {
+    return (
+      <div className="mb-4">
+        <FieldLabel>업종코드</FieldLabel>
+        <p className="text-[12px] text-[#94A3B8] mb-3">업종코드를 알고 계신가요? (사업자등록증 또는 국세청 홈택스에서 확인 가능)</p>
+        <div className="flex gap-2">
+          <ChipButton label="알고 있어요" selected={false} onClick={() => setMode('code')} />
+          <ChipButton label="모르겠어요" selected={false} onClick={() => setMode('category')} />
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'code') {
+    return (
+      <div className="mb-4">
+        <FieldLabel>업종코드 입력</FieldLabel>
+        <p className="text-[12px] text-[#94A3B8] mb-2">사업자등록증 또는 홈택스에서 확인한 6자리 업종코드를 입력하세요.</p>
+        <div className="relative mb-2">
+          <input
+            type="text"
+            value={codeInput}
+            onChange={e => handleCodeChange(e.target.value)}
+            placeholder="예: 721100"
+            maxLength={6}
+            className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]"
+          />
+        </div>
+        {name && (
+          <div className="bg-[#F0FDF4] border border-[#86EFAC] rounded-[10px] px-3 py-2 mb-2">
+            <p className="text-[13px] text-[#16A34A] font-medium">{code} — {name}</p>
+          </div>
+        )}
+        {codeInput.length === 6 && !name && (
+          <p className="text-[12px] text-[#F59E0B]">등록되지 않은 업종코드입니다. 직접 업종명을 입력해 주세요.</p>
+        )}
+        {codeInput.length === 6 && !name && (
+          <div className="mt-2">
+            <FieldLabel>업종명 직접 입력</FieldLabel>
+            <input
+              type="text"
+              value={name}
+              onChange={e => onChange(codeInput, e.target.value)}
+              placeholder="예: 소프트웨어 개발업"
+              className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]"
+            />
+          </div>
+        )}
+        <button onClick={() => { setMode('ask'); setCodeInput(''); onChange('', '') }}
+          className="text-[12px] text-[#94A3B8] underline mt-1">
+          다시 선택
+        </button>
+      </div>
+    )
+  }
+
+  // category mode
+  return (
+    <div className="mb-4">
+      <FieldLabel>업종 선택</FieldLabel>
+      <p className="text-[12px] text-[#94A3B8] mb-3">해당하는 업종을 선택해 주세요.</p>
+
+      <div className="flex gap-2 flex-wrap mb-3">
+        {BUSINESS_CATEGORIES.map(cat => (
+          <MultiChipButton
+            key={cat.label}
+            label={cat.label}
+            selected={selectedCategory === cat.label}
+            onClick={() => setSelectedCategory(cat.label)}
+          />
+        ))}
+      </div>
+
+      {selectedCategory && (
+        <div className="bg-[#F8FAFC] rounded-[10px] p-3 mb-2">
+          <div className="flex gap-2 flex-wrap">
+            {BUSINESS_CATEGORIES.find(c => c.label === selectedCategory)?.items.map(item => (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => handleCategorySelect(item.code, item.name)}
+                className={`px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-all ${
+                  code === item.code
+                    ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
+                    : 'bg-white text-[#475569] border-[#CBD5E1] hover:border-[#1E3A5F]'
+                }`}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {name && (
+        <div className="bg-[#F0FDF4] border border-[#86EFAC] rounded-[10px] px-3 py-2 mb-2">
+          <p className="text-[13px] text-[#16A34A] font-medium">{code} — {name}</p>
+        </div>
+      )}
+
+      <button onClick={() => { setMode('ask'); onChange('', '') }}
+        className="text-[12px] text-[#94A3B8] underline mt-1">
+        다시 선택
+      </button>
+    </div>
+  )
+}
+
+// ============================================================
 // Initial Data
 // ============================================================
 const initialFormData: FormData = {
@@ -334,12 +590,13 @@ const initialFormData: FormData = {
   jobType: 'employee', annualSalary: 0,
   annualRevenue: 0, annualNetIncome: 0,
   yellowUmbrellaContrib: 0, bookkeepingType: 'none', annualDividend: 0,
+  businessTypeCode: '', businessTypeName: '',
   retirementMonthlyExpense: 0,
   name: '', phone: '', email: '', privacyAgree: false,
 }
 
 // ============================================================
-// Step 1 — 기본 정보
+// Step 1
 // ============================================================
 function Step1({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const age = calcAge(data.birthYear, data.birthMonth)
@@ -417,7 +674,7 @@ function Step1({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 2 — 자산 현황
+// Step 2
 // ============================================================
 function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const totalCash = (data.bankDeposit || 0) + (data.termDeposit || 0) + (data.savingsAccount || 0) +
@@ -448,7 +705,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
     <div>
       <SectionTitle>자산 현황</SectionTitle>
       <Notice>모든 금액은 만원 단위로 입력해 주세요. 없는 항목은 비워두세요.</Notice>
-
       <FieldLabel>현금성 자산</FieldLabel>
       <p className="text-[11px] text-[#94A3B8] mb-3">적용 금리: 보통예금 0.25% / 정기예금·적금 3.0% / CMA 1.5%</p>
       <NumberInput label="보통예금" value={data.bankDeposit} onChange={v => onChange({ bankDeposit: v })} unit="만원" />
@@ -460,7 +716,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
         hint="전세 또는 월세 보증금으로 돌려받을 금액 (수익률 0% 적용)" />
       <SumBar label="현금성 자산 합계" value={totalCash} />
       <Divider />
-
       <FieldLabel>투자자산</FieldLabel>
       <p className="text-[11px] text-[#94A3B8] mb-3">적용 수익률: 5.5% (세후 4.65%)</p>
       <NumberInput label="주식/ETF" value={data.stocksEtf} onChange={v => onChange({ stocksEtf: v })} unit="만원" />
@@ -470,7 +725,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
       <NumberInput label="기타투자" value={data.otherInvestments} onChange={v => onChange({ otherInvestments: v })} unit="만원" />
       <SumBar label="투자자산 합계" value={totalInvestment} />
       <Divider />
-
       <FieldLabel>부동산</FieldLabel>
       <p className="text-[11px] text-[#94A3B8] mb-3">유형별 상승률 자동 적용 · 임대보증금은 부채로 자동 처리됩니다.</p>
       {data.realEstateItems.map((item, index) => (
@@ -494,7 +748,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
         </>
       )}
       <Divider />
-
       <FieldLabel>퇴직연금</FieldLabel>
       {!hasPension(data.jobType) ? (
         <div className="bg-[#F8FAFC] rounded-[10px] px-4 py-3 mb-4">
@@ -511,7 +764,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
                 selected={data.pensionType === t} onClick={() => onChange({ pensionType: t })} />
             ))}
           </div>
-
           {data.pensionType === 'DB' && (
             <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
               <InfoBox>
@@ -524,7 +776,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
                 hint="현재까지 재직한 연수를 입력하세요 (연봉은 직업정보 Step에서 입력)" />
             </div>
           )}
-
           {data.pensionType === 'DC' && (
             <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
               <InfoBox>
@@ -536,7 +787,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
                 onChange={v => onChange({ pensionBalance: v })} unit="만원" />
             </div>
           )}
-
           {data.pensionType === 'IRP' && (
             <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
               <InfoBox>
@@ -554,7 +804,6 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
         </>
       )}
       <Divider />
-
       <FieldLabel>개인연금</FieldLabel>
       <p className="text-[11px] text-[#94A3B8] mb-3">연금저축펀드·연금저축보험 등 · 운용수익률 연 3% 적용</p>
       <NumberInput label="개인연금 잔액" value={data.personalPensionBalance}
@@ -562,14 +811,12 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
       <NumberInput label="월 납입액" value={data.personalPensionMonthly}
         onChange={v => onChange({ personalPensionMonthly: v })} unit="만원" />
       <Divider />
-
       <FieldLabel>국민연금</FieldLabel>
       <NumberInput label="예상 월 수령액" value={data.nationalPensionExpected}
         onChange={v => onChange({ nationalPensionExpected: v })} unit="만원"
         placeholder="국민연금공단 조회 금액"
         hint="국민연금 홈페이지(nps.or.kr) → 내 연금 알아보기에서 조회하세요" />
       <Divider />
-
       <FieldLabel>보험 해약환급금</FieldLabel>
       <p className="text-[11px] text-[#94A3B8] mb-3">연금 전환형은 개인연금 섹션에 입력해 주세요.</p>
       {data.insurancePayouts.map((ins) => (
@@ -609,7 +856,7 @@ function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 3 — 부채 현황
+// Step 3
 // ============================================================
 function Step3({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const loanTypes = ['주택담보대출', '신용대출', '전세대출', '사업자대출', '기타대출']
@@ -687,7 +934,7 @@ function Step3({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 4 — 수입 / 지출
+// Step 4
 // ============================================================
 function Step4({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const totalRentalIncome = calcTotalRentalIncome(data.realEstateItems)
@@ -762,7 +1009,7 @@ function Step4({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 5 — 직업 정보
+// Step 5 — 직업 정보 (업종코드 추가)
 // ============================================================
 function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const isEmployee  = data.jobType === 'employee'
@@ -774,7 +1021,6 @@ function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
     <div>
       <SectionTitle>직업 정보</SectionTitle>
       <p className="text-[12px] text-[#94A3B8] mb-5">직업 유형에 따라 절세 전략과 퇴직급여 계산이 달라집니다.</p>
-
       <div className="mb-5">
         <FieldLabel>직업 유형</FieldLabel>
         <div className="flex gap-2 flex-wrap">
@@ -818,8 +1064,13 @@ function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
         <div>
           <InfoBox>
             개인사업자는 종합소득세 절세가 핵심입니다.
-            매출과 순이익을 기반으로 맞춤 절세 전략을 제안해드립니다.
+            업종코드와 매출·순이익을 기반으로 맞춤 절세 전략을 제안해드립니다.
           </InfoBox>
+          <BusinessTypeSelector
+            code={data.businessTypeCode}
+            name={data.businessTypeName}
+            onChange={(code, name) => onChange({ businessTypeCode: code, businessTypeName: name })}
+          />
           <NumberInput label="연 매출 (연간 총 매출액)" value={data.annualRevenue}
             onChange={v => onChange({ annualRevenue: v })} unit="만원" />
           <NumberInput label="연 순이익 (세전)" value={data.annualNetIncome}
@@ -885,7 +1136,7 @@ function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 6 — 은퇴 목표
+// Step 6
 // ============================================================
 function Step6({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   const age = calcAge(data.birthYear, data.birthMonth)
@@ -908,7 +1159,7 @@ function Step6({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
 }
 
 // ============================================================
-// Step 7 — 연락처
+// Step 7
 // ============================================================
 function Step7({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   return (
@@ -1016,6 +1267,7 @@ export default function DiagnosisPage() {
             <motion.div key={step}
               initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+              {step === 1
               {step === 1 && <Step1 data={data} onChange={updateForm} />}
               {step === 2 && <Step2 data={data} onChange={updateForm} />}
               {step === 3 && <Step3 data={data} onChange={updateForm} />}
@@ -1054,3 +1306,4 @@ export default function DiagnosisPage() {
     </div>
   )
 }
+             
