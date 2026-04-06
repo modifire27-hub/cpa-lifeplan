@@ -842,7 +842,6 @@ function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
           <NumberInput label="연간 배당 수령액" value={data.annualDividend}
             onChange={v => onChange({ annualDividend: v })} unit="만원"
             hint="법인으로부터 수령한 배당금 (연간 합계)" />
-          <Notice>💡 급여 대비 배당 비율 최적화로 세금을 절감할 수 있습니다. 보고서에서 최적 구조를 제안해드립니다.</Notice>
         </div>
       )}
 
@@ -899,9 +898,79 @@ function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormD
           <NumberInput label="노란우산공제 월 납입액" value={data.yellowUmbrellaContrib}
             onChange={v => onChange({ yellowUmbrellaContrib: v })} unit="만원"
             hint="소기업·소상공인 해당 시 · 연 최대 500만원 소득공제" />
-          <Notice>💡 프리랜서는 IRP 납입 시 연 900만원 한도 세액공제 혜택을 받을 수 있습니다. 자산 입력에서 IRP를 추가해보세요.</Notice>
         </div>
       )}
+
+      {/* ── 공통: 세무·회계 상담 광고 (모든 직업 유형) ── */}
+      <Divider />
+      <div className="bg-[#1B2A4A] rounded-[16px] p-5">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-[#3182F6] rounded-full flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[15px] font-bold text-white">이흥준 회계사</p>
+            <p className="text-[11px] text-[#93C5FD]">CPA · CTA · CFP 국제공인재무설계사</p>
+          </div>
+        </div>
+
+        <p className="text-[13px] text-[#CBD5E1] leading-relaxed mb-4">
+          사업자 세무 기장, 절세 전략, 법인 설립·전환,<br />
+          재무설계까지 한 번에 상담받으세요.
+        </p>
+
+        {/* 직업별 맞춤 문구 */}
+        {isEmployee && (
+          <div className="bg-[#243B5E] rounded-[10px] px-3 py-2.5 mb-4">
+            <p className="text-[12px] text-[#93C5FD]">
+              💡 <strong className="text-white">직장인 절세 포인트</strong><br />
+              연말정산 환급 극대화 · 금융소득 분리과세 설계 · 퇴직 후 절세 플랜
+            </p>
+          </div>
+        )}
+        {isCorporate && (
+          <div className="bg-[#243B5E] rounded-[10px] px-3 py-2.5 mb-4">
+            <p className="text-[12px] text-[#93C5FD]">
+              💡 <strong className="text-white">법인대표 절세 포인트</strong><br />
+              급여·배당 최적 비율 설계 · 임원퇴직금 규정 · 법인세 절감 전략
+            </p>
+          </div>
+        )}
+        {isSelf && (
+          <div className="bg-[#243B5E] rounded-[10px] px-3 py-2.5 mb-4">
+            <p className="text-[12px] text-[#93C5FD]">
+              💡 <strong className="text-white">개인사업자 절세 포인트</strong><br />
+              종합소득세 신고 · 경비 처리 최적화 · 법인 전환 타이밍 분석
+            </p>
+          </div>
+        )}
+        {isFreelance && (
+          <div className="bg-[#243B5E] rounded-[10px] px-3 py-2.5 mb-4">
+            <p className="text-[12px] text-[#93C5FD]">
+              💡 <strong className="text-white">프리랜서 절세 포인트</strong><br />
+              3.3% 환급 극대화 · 사업자 등록 여부 판단 · 경비 처리 가이드
+            </p>
+          </div>
+        )}
+
+        <a href="tel:010-2498-1905"
+          className="flex items-center justify-center gap-2 w-full bg-[#3182F6] text-white py-3 rounded-[12px] text-[14px] font-semibold mb-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.82a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+          010-2498-1905 전화 상담
+        </a>
+        <a href="mailto:hjoonlee@taacc.co.kr"
+          className="flex items-center justify-center gap-2 w-full bg-[#243B5E] text-[#93C5FD] py-3 rounded-[12px] text-[14px] font-semibold border border-[#3182F6]">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+          </svg>
+          hjoonlee@taacc.co.kr 이메일 문의
+        </a>
+      </div>
     </div>
   )
 }
