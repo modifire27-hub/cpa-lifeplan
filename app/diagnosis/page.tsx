@@ -1,53 +1,319 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 
-/* ───────────────── 타입 정의 ───────────────── */
+// ============================================================
+// Types
+// ============================================================
 interface ChildInfo { age: number }
-interface InsurancePayout { company: string; type: string; amount: number }
+interface InsurancePayout {
+  id: number
+  type: 'surrender' | 'maturity'
+  currentAmount: number
+  maturityYear?: number
+  maturityAmount?: number
+}
 interface LoanDetail {
-  type: string; balance: number; monthlyPayment: number;
-  interestRate: number; remainingMonths: number; repayType: string;
+  id: number
+  type: string
+  balance: number
+  monthlyPayment: number
+  interestRate: number
+  remainingMonths: number
+  repayType: 'equal_principal_interest' | 'equal_principal' | 'bullet'
 }
 interface RealEstateItem {
-  type: string; region: string; currentValue: number;
-  leaseDeposit: number; isRental: boolean; rentalMonthly: number;
+  id: number
+  kind: '아파트(수도권)' | '아파트(기타)' | '다세대/빌라' | '오피스텔' | '단독주택' | '토지' | '상가'
+  usage: '자가거주' | '임대중' | '임대중(향후실거주예정)' | '거주+임대겸용' | '미사용'
+  currentValue: number
+  rentalDeposit: number
+  monthlyRent: number
 }
 interface FormData {
-  birthYear: number; birthMonth: number;
-  retirementTargetAge: number; lifeExpectancy: number;
-  maritalStatus: 'single' | 'married'; children: ChildInfo[];
-  bankDeposit: number; termDeposit: number; savingsAccount: number;
-  cmaAccount: number; otherSavings: number; leaseDeposit: number;
-  stocksEtf: number; funds: number; bonds: number;
-  crypto: number; otherInvestments: number;
-  realEstateItems: RealEstateItem[];
-  pensionType: 'DB' | 'DC' | 'IRP' | 'none';
-  pensionBalance: number; pensionMonthlyContrib: number;
-  yearsOfService: number; estimatedRetireMonthlySalary: number;
-  personalPensionBalance: number; personalPensionMonthly: number;
-  nationalPensionExpected: number;
-  insurancePayouts: InsurancePayout[];
-  loans: LoanDetail[];
-  salary: number; businessIncome: number;
-  rentalIncome: number; dividendIncome: number; otherIncome: number;
-  housingCost: number; foodLife: number; transportation: number;
-  communication: number; healthMedical: number; educationChild: number;
-  leisureCulture: number; otherExpenses: number; insurancePremium: number;
-  hasLossInsurance: boolean; hasLifeInsurance: boolean;
-  hasCancerInsurance: boolean; hasAnnuityInsurance: boolean;
-  jobType: 'employee' | 'self_employed' | 'corporate' | 'freelancer';
-  annualSalary: number; workYears: number;
-  businessRevenue: number; businessProfit: number;
-  dividendAmount: number; yellowUmbrellaAmount: number;
-  retirementGoalExpense: number;
-  name: string; phone: string; email: string; privacyAgree: boolean;
+  birthYear: number
+  birthMonth: number
+  retirementTargetAge: number
+  lifeExpectancy: number
+  maritalStatus: 'single' | 'married'
+  children: ChildInfo[]
+  bankDeposit: number
+  termDeposit: number
+  savingsAccount: number
+  cmaAccount: number
+  otherSavings: number
+  leaseDeposit: number
+  stocksEtf: number
+  funds: number
+  bonds: number
+  crypto: number
+  otherInvestments: number
+  realEstateItems: RealEstateItem[]
+  pensionType: 'DB' | 'DC' | 'IRP' | 'none'
+  pensionBalance: number
+  pensionMonthlyContrib: number
+  yearsOfService: number
+  personalPensionBalance: number
+  personalPensionMonthly: number
+  nationalPensionExpected: number
+  insurancePayouts: InsurancePayout[]
+  otherAssets: number
+  loans: LoanDetail[]
+  salary: number
+  businessIncome: number
+  dividendIncome: number
+  otherIncome: number
+  housingCost: number
+  foodLife: number
+  transportation: number
+  communication: number
+  insurance: number
+  medicalEducation: number
+  leisureSocial: number
+  otherExpense: number
+  hasLossInsurance: boolean
+  hasLifeInsurance: boolean
+  hasCancerInsurance: boolean
+  hasAnnuityInsurance: boolean
+  jobType: 'employee' | 'self_employed' | 'corporate' | 'freelancer'
+  annualSalary: number
+  annualRevenue: number
+  annualNetIncome: number
+  yellowUmbrellaContrib: number
+  bookkeepingType: 'simple' | 'double' | 'none'
+  annualDividend: number
+  retirementMonthlyExpense: number
+  name: string
+  phone: string
+  email: string
+  privacyAgree: boolean
 }
 
+const TOTAL_STEPS = 7
+
+// ============================================================
+// Utility
+// ============================================================
+function calcAge(year: number, month: number): number {
+  if (!year || !month) return 0
+  const now = new Date()
+  let age = now.getFullYear() - year
+  if (now.getMonth() + 1 < month) age--
+  return age
+}
+function formatNumber(n: number): string {
+  if (!n) return ''
+  return n.toLocaleString('ko-KR')
+}
+function calcTotalRentalIncome(items: RealEstateItem[]): number {
+  return items.filter(r => hasRentalIncome(r.usage)).reduce((s, r) => s + (r.monthlyRent || 0), 0)
+}
+function hasRentalIncome(usage: RealEstateItem['usage']): boolean {
+  return usage === '임대중' || usage === '임대중(향후실거주예정)' || usage === '거주+임대겸용'
+}
+function hasPension(jobType: FormData['jobType']): boolean {
+  return jobType === 'employee' || jobType === 'corporate'
+}
+
+// ============================================================
+// UI Primitives
+// ============================================================
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[18px] font-bold text-[#1E293B] mb-1">{children}</h2>
+}
+function FieldLabel({ children, sub }: { children: React.ReactNode; sub?: string }) {
+  return (
+    <div className="mb-1.5">
+      <label className="text-[13px] font-semibold text-[#374151]">{children}</label>
+      {sub && <span className="text-[11px] text-[#94A3B8] ml-1.5">{sub}</span>}
+    </div>
+  )
+}
+function NumberInput({
+  label, value, onChange, unit, placeholder, readOnly, hint, allowDecimal
+}: {
+  label: string; value: number; onChange: (v: number) => void
+  unit?: string; placeholder?: string; readOnly?: boolean; hint?: string; allowDecimal?: boolean
+}) {
+  const [raw, setRaw] = useState('')
+  return (
+    <div className="mb-4">
+      {label && <FieldLabel>{label}</FieldLabel>}
+      <div className="relative">
+        <input
+          type="text"
+          inputMode={allowDecimal ? 'decimal' : 'numeric'}
+          readOnly={readOnly}
+          value={readOnly ? (value ? formatNumber(value) : '') : undefined}
+          defaultValue={!readOnly ? undefined : undefined}
+          onChange={e => {
+            if (readOnly) return
+            const val = e.target.value
+            if (allowDecimal) {
+              if (/^\d*\.?\d*$/.test(val)) {
+                setRaw(val)
+                onChange(val === '' || val === '.' ? 0 : parseFloat(val))
+              }
+            } else {
+              const cleaned = val.replace(/,/g, '')
+              if (/^\d*$/.test(cleaned)) {
+                setRaw(formatNumber(Number(cleaned)))
+                onChange(Number(cleaned))
+              }
+            }
+          }}
+          onFocus={e => {
+            if (readOnly) return
+            if (!allowDecimal) {
+              setRaw(value ? String(value) : '')
+              e.target.value = value ? String(value) : ''
+            }
+          }}
+          onBlur={() => {
+            if (readOnly) return
+            if (!allowDecimal) setRaw(value ? formatNumber(value) : '')
+          }}
+          placeholder={placeholder || '0'}
+          className={`w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 pr-12 text-[14px] text-[#1E293B] focus:outline-none focus:border-[#1E3A5F] ${readOnly ? 'bg-[#F8FAFC] text-[#94A3B8]' : 'bg-white'}`}
+        />
+        {unit && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#94A3B8]">{unit}</span>}
+      </div>
+      {hint && <p className="text-[11px] text-[#94A3B8] mt-1">{hint}</p>}
+    </div>
+  )
+}
+function ChipButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`px-4 py-2 rounded-full text-[13px] font-medium border transition-all ${selected ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]' : 'bg-white text-[#475569] border-[#CBD5E1] hover:border-[#1E3A5F]'}`}>
+      {label}
+    </button>
+  )
+}
+function MultiChipButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-all ${selected ? 'bg-[#EFF6FF] text-[#1E3A5F] border-[#1E3A5F]' : 'bg-white text-[#475569] border-[#CBD5E1]'}`}>
+      {label}
+    </button>
+  )
+}
+function Divider() { return <div className="border-t border-[#F1F5F9] my-5" /> }
+function SumBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bg-[#F8FAFC] rounded-[10px] px-4 py-3 flex justify-between items-center mt-3">
+      <span className="text-[13px] text-[#475569] font-medium">{label}</span>
+      <span className="text-[15px] font-bold text-[#1E3A5F]">{formatNumber(value)} 만원</span>
+    </div>
+  )
+}
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-[10px] px-4 py-3 text-[12px] text-[#92400E] mb-4">
+      {children}
+    </div>
+  )
+}
+function InfoBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px] px-4 py-3 text-[12px] text-[#1E40AF] mb-4">
+      {children}
+    </div>
+  )
+}
+function RepayTypeSelector({ value, onChange }: {
+  value: LoanDetail['repayType']
+  onChange: (v: LoanDetail['repayType']) => void
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap mb-3">
+      {([
+        { label: '원리금균등', value: 'equal_principal_interest' },
+        { label: '원금균등',   value: 'equal_principal' },
+        { label: '만기일시',   value: 'bullet' },
+      ] as const).map(o => (
+        <button key={o.value} type="button" onClick={() => onChange(o.value)}
+          className={`px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-all ${value === o.value ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]' : 'bg-white text-[#475569] border-[#CBD5E1]'}`}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================
+// RealEstateCard
+// ============================================================
+const REAL_ESTATE_KINDS: RealEstateItem['kind'][] = [
+  '아파트(수도권)', '아파트(기타)', '다세대/빌라', '오피스텔', '단독주택', '토지', '상가'
+]
+const REAL_ESTATE_USAGES: RealEstateItem['usage'][] = [
+  '자가거주', '임대중', '임대중(향후실거주예정)', '거주+임대겸용', '미사용'
+]
+const USAGE_LABELS: Record<RealEstateItem['usage'], string> = {
+  '자가거주': '자가거주',
+  '임대중': '임대중',
+  '임대중(향후실거주예정)': '임대중 (향후 실거주 예정)',
+  '거주+임대겸용': '거주+임대 겸용 (일부 임대)',
+  '미사용': '미사용/공실',
+}
+const RE_RATE_LABELS: Record<RealEstateItem['kind'], string> = {
+  '아파트(수도권)': '연 3.5%', '아파트(기타)': '연 2.5%', '다세대/빌라': '연 1.5%',
+  '오피스텔': '연 1.5%', '단독주택': '연 2.0%', '토지': '연 2.0%', '상가': '연 1.0%',
+}
+function RealEstateCard({ item, index, onUpdate, onRemove }: {
+  item: RealEstateItem; index: number
+  onUpdate: (patch: Partial<RealEstateItem>) => void; onRemove: () => void
+}) {
+  const showRental = hasRentalIncome(item.usage)
+  return (
+    <div className="bg-[#F8FAFC] rounded-[12px] p-4 mb-4 border border-[#E2E8F0]">
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-[13px] font-semibold text-[#374151]">부동산 {index + 1}</span>
+        <button onClick={onRemove} className="text-[#EF4444] text-[12px] px-2 py-1 border border-[#FCA5A5] rounded-[8px]">삭제</button>
+      </div>
+      <div className="mb-3">
+        <FieldLabel>종류</FieldLabel>
+        <select value={item.kind} onChange={e => onUpdate({ kind: e.target.value as RealEstateItem['kind'] })}
+          className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]">
+          {REAL_ESTATE_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+      <div className="mb-3">
+        <FieldLabel>용도</FieldLabel>
+        <select value={item.usage} onChange={e => {
+          const usage = e.target.value as RealEstateItem['usage']
+          onUpdate({ usage, rentalDeposit: hasRentalIncome(usage) ? item.rentalDeposit : 0, monthlyRent: hasRentalIncome(usage) ? item.monthlyRent : 0 })
+        }} className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]">
+          {REAL_ESTATE_USAGES.map(u => <option key={u} value={u}>{USAGE_LABELS[u]}</option>)}
+        </select>
+        {item.usage === '임대중(향후실거주예정)' && (
+          <p className="text-[11px] text-[#F59E0B] mt-1">은퇴 후 실거주 전환 시 임대소득이 종료됩니다. 보고서에 반영됩니다.</p>
+        )}
+      </div>
+      <NumberInput label="현재 시세" value={item.currentValue} onChange={v => onUpdate({ currentValue: v })} unit="만원"
+        hint={`가격 상승률 ${RE_RATE_LABELS[item.kind]} 적용`} />
+      {showRental && (
+        <div className="border-t border-[#E2E8F0] pt-3 mt-1">
+          <NumberInput label="임대보증금 (받은 금액)" value={item.rentalDeposit}
+            onChange={v => onUpdate({ rentalDeposit: v })} unit="만원"
+            hint="세입자로부터 받은 보증금 — 부채로 처리됩니다" />
+          <NumberInput label="월 임대료" value={item.monthlyRent}
+            onChange={v => onUpdate({ monthlyRent: v })} unit="만원"
+            hint="분리과세 15.4% 적용하여 계산됩니다" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// Initial Data
+// ============================================================
 const initialFormData: FormData = {
-  birthYear: 0, birthMonth: 1,
+  birthYear: 0, birthMonth: 0,
   retirementTargetAge: 65, lifeExpectancy: 90,
   maritalStatus: 'single', children: [],
   bankDeposit: 0, termDeposit: 0, savingsAccount: 0,
@@ -55,933 +321,736 @@ const initialFormData: FormData = {
   stocksEtf: 0, funds: 0, bonds: 0, crypto: 0, otherInvestments: 0,
   realEstateItems: [],
   pensionType: 'none', pensionBalance: 0, pensionMonthlyContrib: 0,
-  yearsOfService: 0, estimatedRetireMonthlySalary: 0,
+  yearsOfService: 0,
   personalPensionBalance: 0, personalPensionMonthly: 0,
   nationalPensionExpected: 0,
   insurancePayouts: [],
-  loans: [],
-  salary: 0, businessIncome: 0, rentalIncome: 0,
-  dividendIncome: 0, otherIncome: 0,
-  housingCost: 0, foodLife: 0, transportation: 0,
-  communication: 0, healthMedical: 0, educationChild: 0,
-  leisureCulture: 0, otherExpenses: 0, insurancePremium: 0,
+  otherAssets: 0, loans: [],
+  salary: 0, businessIncome: 0, dividendIncome: 0, otherIncome: 0,
+  housingCost: 0, foodLife: 0, transportation: 0, communication: 0,
+  insurance: 0, medicalEducation: 0, leisureSocial: 0, otherExpense: 0,
   hasLossInsurance: false, hasLifeInsurance: false,
   hasCancerInsurance: false, hasAnnuityInsurance: false,
-  jobType: 'employee',
-  annualSalary: 0, workYears: 0,
-  businessRevenue: 0, businessProfit: 0,
-  dividendAmount: 0, yellowUmbrellaAmount: 0,
-  retirementGoalExpense: 0,
+  jobType: 'employee', annualSalary: 0,
+  annualRevenue: 0, annualNetIncome: 0,
+  yellowUmbrellaContrib: 0, bookkeepingType: 'none', annualDividend: 0,
+  retirementMonthlyExpense: 0,
   name: '', phone: '', email: '', privacyAgree: false,
-};
+}
 
-const TOTAL_STEPS = 7;
-const hasPension = (j: string) => j === 'employee' || j === 'corporate';
-
-/* ───────────────── 공통 UI 컴포넌트 ───────────────── */
-const SectionTitle = ({ title, sub }: { title: string; sub?: string }) => (
-  <div className="mb-4">
-    <h2 className="text-lg font-bold text-gray-800">{title}</h2>
-    {sub && <p className="text-sm text-gray-500 mt-1">{sub}</p>}
-  </div>
-);
-
-const FieldLabel = ({ label, hint }: { label: string; hint?: string }) => (
-  <div className="mb-1">
-    <span className="text-sm font-medium text-gray-700">{label}</span>
-    {hint && <span className="text-xs text-gray-400 ml-2">{hint}</span>}
-  </div>
-);
-
-const NumberInput = ({
-  value, onChange, placeholder = '0', unit = '만원', min = 0
-}: {
-  value: number; onChange: (v: number) => void;
-  placeholder?: string; unit?: string; min?: number;
-}) => (
-  <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-    <input
-      type="number" min={min}
-      value={value === 0 ? '' : value}
-      onChange={e => onChange(Number(e.target.value) || 0)}
-      placeholder={placeholder}
-      className="flex-1 outline-none text-right text-gray-800 text-sm bg-transparent"
-    />
-    <span className="text-xs text-gray-400 shrink-0">{unit}</span>
-  </div>
-);
-
-const ChipButton = ({ label, selected, onClick }: {
-  label: string; selected: boolean; onClick: () => void;
-}) => (
-  <button
-    onClick={onClick}
-    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-      selected
-        ? 'bg-blue-600 text-white shadow-md'
-        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-    }`}
-  >
-    {label}
-  </button>
-);
-
-const Divider = () => <hr className="my-5 border-gray-100" />;
-
-const SumBar = ({ label, value }: { label: string; value: number }) => (
-  <div className="flex justify-between items-center bg-blue-50 rounded-xl px-4 py-3 mt-3">
-    <span className="text-sm font-medium text-blue-700">{label}</span>
-    <span className="text-base font-bold text-blue-800">
-      {value.toLocaleString()} 만원
-    </span>
-  </div>
-);
-
-const Notice = ({ text }: { text: string }) => (
-  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-3">
-    <p className="text-xs text-amber-700">{text}</p>
-  </div>
-);
-
-const InfoBox = ({ text }: { text: string }) => (
-  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mt-3">
-    <p className="text-xs text-blue-600">{text}</p>
-  </div>
-);
-
-const RepayTypeSelector = ({
-  value, onChange
-}: { value: string; onChange: (v: string) => void }) => (
-  <div className="flex gap-2 mt-1">
-    {['원리금균등', '원금균등', '만기일시'].map(t => (
-      <ChipButton key={t} label={t} selected={value === t} onClick={() => onChange(t)} />
-    ))}
-  </div>
-);
-
-/* ───────────────── Step 1: 기본 정보 ───────────────── */
-const Step1 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
-  const currentYear = new Date().getFullYear();
-  const age = data.birthYear ? currentYear - data.birthYear : 0;
-
+// ============================================================
+// Step 1 — 기본 정보
+// ============================================================
+function Step1({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const age = calcAge(data.birthYear, data.birthMonth)
   return (
     <div>
-      <SectionTitle title="기본 정보" sub="재무 진단을 위한 기본 정보를 입력해주세요." />
-
-      <FieldLabel label="태어난 연도" />
-      <NumberInput value={data.birthYear} onChange={v => onChange('birthYear', v)}
-        placeholder="예: 1985" unit="년" />
-      {age > 0 && <p className="text-xs text-blue-500 mt-1 text-right">현재 {age}세</p>}
-
-      <div className="mt-3">
-        <FieldLabel label="태어난 월" />
-        <div className="flex flex-wrap gap-2">
-          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-            <ChipButton key={m} label={`${m}월`}
-              selected={data.birthMonth === m} onClick={() => onChange('birthMonth', m)} />
-          ))}
-        </div>
-      </div>
-
-      <Divider />
-
-      <FieldLabel label="목표 은퇴 나이" />
-      <div className="flex flex-wrap gap-2">
-        {[55, 60, 65, 70].map(a => (
-          <ChipButton key={a} label={`${a}세`}
-            selected={data.retirementTargetAge === a} onClick={() => onChange('retirementTargetAge', a)} />
-        ))}
-      </div>
-      <div className="mt-2">
-        <NumberInput value={data.retirementTargetAge}
-          onChange={v => onChange('retirementTargetAge', v)} unit="세" />
-      </div>
-
-      <div className="mt-3">
-        <FieldLabel label="기대 수명" />
-        <div className="flex flex-wrap gap-2">
-          {[80, 85, 90, 95, 100].map(a => (
-            <ChipButton key={a} label={`${a}세`}
-              selected={data.lifeExpectancy === a} onClick={() => onChange('lifeExpectancy', a)} />
-          ))}
-        </div>
-      </div>
-
-      <Divider />
-
-      <FieldLabel label="결혼 여부" />
-      <div className="flex gap-3">
-        <ChipButton label="미혼" selected={data.maritalStatus === 'single'}
-          onClick={() => onChange('maritalStatus', 'single')} />
-        <ChipButton label="기혼" selected={data.maritalStatus === 'married'}
-          onClick={() => onChange('maritalStatus', 'married')} />
-      </div>
-
-      {data.maritalStatus === 'married' && (
-        <div className="mt-4">
-          <FieldLabel label="자녀 수" />
-          <div className="flex gap-3">
-            {[0, 1, 2, 3].map(n => (
-              <ChipButton key={n} label={`${n}명`}
-                selected={data.children.length === n}
-                onClick={() => {
-                  const arr: ChildInfo[] = Array.from({ length: n }, (_, i) =>
-                    data.children[i] || { age: 0 });
-                  onChange('children', arr);
-                }} />
+      <SectionTitle>기본 정보</SectionTitle>
+      <p className="text-[12px] text-[#94A3B8] mb-6">정확한 진단을 위해 기본 정보를 입력해 주세요.</p>
+      <Notice>부부 공동 자산(공동명의 부동산 등)을 포함하여 가구 전체 합산 기준으로 입력해 주세요.</Notice>
+      <div className="mb-5">
+        <FieldLabel>생년월일</FieldLabel>
+        <div className="flex gap-2">
+          <select value={data.birthYear || ''} onChange={e => onChange({ birthYear: Number(e.target.value) })}
+            className="flex-1 border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]">
+            <option value="">년도</option>
+            {Array.from({ length: 60 }, (_, i) => new Date().getFullYear() - 18 - i).map(y => (
+              <option key={y} value={y}>{y}년</option>
             ))}
+          </select>
+          <select value={data.birthMonth || ''} onChange={e => onChange({ birthMonth: Number(e.target.value) })}
+            className="flex-1 border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]">
+            <option value="">월</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+              <option key={m} value={m}>{m}월</option>
+            ))}
+          </select>
+        </div>
+        {age > 0 && <p className="text-[12px] text-[#3B82F6] mt-1.5 font-medium">현재 {age}세</p>}
+      </div>
+      <div className="mb-5">
+        <FieldLabel>결혼 여부</FieldLabel>
+        <div className="flex gap-2">
+          <ChipButton label="미혼" selected={data.maritalStatus === 'single'} onClick={() => onChange({ maritalStatus: 'single' })} />
+          <ChipButton label="기혼" selected={data.maritalStatus === 'married'} onClick={() => onChange({ maritalStatus: 'married' })} />
+        </div>
+      </div>
+      <div className="mb-5">
+        <FieldLabel>자녀 수</FieldLabel>
+        {data.children.map((c, i) => (
+          <div key={i} className="flex gap-2 items-center mb-2">
+            <NumberInput label="" value={c.age} onChange={v => {
+              const arr = [...data.children]; arr[i] = { age: v }; onChange({ children: arr })
+            }} unit="세" placeholder="자녀 나이" />
+            <button onClick={() => {
+              const arr = [...data.children]; arr.splice(i, 1); onChange({ children: arr })
+            }} className="text-[#EF4444] text-[12px] px-2 py-1 border border-[#FCA5A5] rounded-[8px] whitespace-nowrap mb-4">삭제</button>
           </div>
-          {data.children.map((c, i) => (
-            <div key={i} className="mt-2">
-              <FieldLabel label={`${i + 1}번째 자녀 나이`} />
-              <NumberInput value={c.age} unit="세"
-                onChange={v => {
-                  const arr = [...data.children];
-                  arr[i] = { age: v };
-                  onChange('children', arr);
-                }} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ───────────────── Step 2: 자산 현황 ───────────────── */
-const Step2 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
-  const cashTotal = data.bankDeposit + data.termDeposit + data.savingsAccount
-    + data.cmaAccount + data.otherSavings;
-  const investTotal = data.stocksEtf + data.funds + data.bonds
-    + data.crypto + data.otherInvestments;
-  const reTotal = data.realEstateItems.reduce((s, r) => s + r.currentValue, 0);
-  const leaseFromRE = data.realEstateItems.reduce((s, r) => s + (r.leaseDeposit || 0), 0);
-  const pensionTotal = (hasPension(data.jobType) ? data.pensionBalance : 0)
-    + data.personalPensionBalance;
-  const insurTotal = data.insurancePayouts.reduce((s, p) => s + p.amount, 0);
-  const grandTotal = cashTotal + investTotal + reTotal + pensionTotal + insurTotal;
-
-  const addRE = () => onChange('realEstateItems', [...data.realEstateItems, {
-    type: '아파트', region: '수도권', currentValue: 0,
-    leaseDeposit: 0, isRental: false, rentalMonthly: 0
-  }]);
-  const updateRE = (i: number, key: keyof RealEstateItem, v: any) => {
-    const arr = [...data.realEstateItems];
-    arr[i] = { ...arr[i], [key]: v };
-    onChange('realEstateItems', arr);
-  };
-  const removeRE = (i: number) => {
-    onChange('realEstateItems', data.realEstateItems.filter((_, idx) => idx !== i));
-  };
-
-  const addInsurance = () => onChange('insurancePayouts', [...data.insurancePayouts,
-    { company: '', type: '', amount: 0 }]);
-  const updateInsurance = (i: number, key: keyof InsurancePayout, v: any) => {
-    const arr = [...data.insurancePayouts];
-    arr[i] = { ...arr[i], [key]: v };
-    onChange('insurancePayouts', arr);
-  };
-  const removeInsurance = (i: number) => {
-    onChange('insurancePayouts', data.insurancePayouts.filter((_, idx) => idx !== i));
-  };
-
-  return (
-    <div>
-      <SectionTitle title="자산 현황" sub="보유하신 자산을 항목별로 입력해주세요." />
-
-      {/* 현금성 자산 */}
-      <h3 className="font-semibold text-gray-700 mb-2">💰 현금성 자산</h3>
-      {[
-        ['일반 예금', 'bankDeposit'],
-        ['정기 예금', 'termDeposit'],
-        ['적금', 'savingsAccount'],
-        ['CMA / MMF', 'cmaAccount'],
-        ['기타 저축', 'otherSavings'],
-      ].map(([label, key]) => (
-        <div key={key} className="mt-2">
-          <FieldLabel label={label} />
-          <NumberInput value={(data as any)[key]}
-            onChange={v => onChange(key as keyof FormData, v)} />
-        </div>
-      ))}
-      <SumBar label="현금성 자산 합계" value={cashTotal} />
-
-      <Divider />
-
-      {/* 투자 자산 */}
-      <h3 className="font-semibold text-gray-700 mb-2">📈 투자 자산</h3>
-      {[
-        ['주식 / ETF', 'stocksEtf'],
-        ['펀드', 'funds'],
-        ['채권', 'bonds'],
-        ['가상화폐', 'crypto'],
-        ['기타 투자', 'otherInvestments'],
-      ].map(([label, key]) => (
-        <div key={key} className="mt-2">
-          <FieldLabel label={label} />
-          <NumberInput value={(data as any)[key]}
-            onChange={v => onChange(key as keyof FormData, v)} />
-        </div>
-      ))}
-      <SumBar label="투자 자산 합계" value={investTotal} />
-
-      <Divider />
-
-      {/* 부동산 */}
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-semibold text-gray-700">🏠 부동산</h3>
-        <button onClick={addRE}
-          className="text-sm text-blue-600 border border-blue-300 rounded-lg px-3 py-1 hover:bg-blue-50">
-          + 추가
+        ))}
+        <button onClick={() => onChange({ children: [...data.children, { age: 0 }] })}
+          className="text-[13px] text-[#1E3A5F] border border-[#1E3A5F] px-4 py-2 rounded-[10px] hover:bg-[#EFF6FF] transition-colors">
+          + 자녀 추가
         </button>
       </div>
-      {data.realEstateItems.map((re, i) => (
-        <div key={i} className="border border-gray-200 rounded-xl p-3 mb-3 bg-gray-50">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-700">부동산 {i + 1}</span>
-            <button onClick={() => removeRE(i)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
-          </div>
-          <FieldLabel label="유형" />
-          <div className="flex flex-wrap gap-2 mb-2">
-            {['아파트', '빌라', '오피스텔', '상가', '토지', '기타'].map(t => (
-              <ChipButton key={t} label={t} selected={re.type === t}
-                onClick={() => updateRE(i, 'type', t)} />
-            ))}
-          </div>
-          <FieldLabel label="지역" />
-          <div className="flex flex-wrap gap-2 mb-2">
-            {['수도권', '지방광역시', '기타'].map(r => (
-              <ChipButton key={r} label={r} selected={re.region === r}
-                onClick={() => updateRE(i, 'region', r)} />
-            ))}
-          </div>
-          <FieldLabel label="현재 시세" />
-          <NumberInput value={re.currentValue}
-            onChange={v => updateRE(i, 'currentValue', v)} />
-          <div className="mt-2">
-            <FieldLabel label="임대보증금 (있는 경우)" hint="세입자에게 돌려줄 금액" />
-            <NumberInput value={re.leaseDeposit}
-              onChange={v => updateRE(i, 'leaseDeposit', v)} />
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            <FieldLabel label="임대 수익 발생 여부" />
-            <ChipButton label={re.isRental ? '있음' : '없음'}
-              selected={true} onClick={() => updateRE(i, 'isRental', !re.isRental)} />
-          </div>
-          {re.isRental && (
-            <div className="mt-2">
-              <FieldLabel label="월 임대 수익" />
-              <NumberInput value={re.rentalMonthly}
-                onChange={v => updateRE(i, 'rentalMonthly', v)} />
-            </div>
-          )}
+      <Divider />
+      <div className="mb-5">
+        <FieldLabel>목표 은퇴 나이</FieldLabel>
+        <div className="flex gap-2 flex-wrap mb-2">
+          {[55, 60, 65, 70].map(a => (
+            <ChipButton key={a} label={`${a}세`} selected={data.retirementTargetAge === a} onClick={() => onChange({ retirementTargetAge: a })} />
+          ))}
         </div>
-      ))}
-      {reTotal > 0 && <SumBar label="부동산 합계" value={reTotal} />}
-      {leaseFromRE > 0 && (
-        <Notice text={`임대보증금 ${leaseFromRE.toLocaleString()}만원은 부채로 자동 반영됩니다.`} />
-      )}
+        <NumberInput label="" value={data.retirementTargetAge} onChange={v => onChange({ retirementTargetAge: v })} unit="세" placeholder="직접 입력" />
+      </div>
+      <div className="mb-5">
+        <FieldLabel>기대 수명</FieldLabel>
+        <div className="flex gap-2 flex-wrap mb-2">
+          {[80, 85, 90, 95, 100].map(a => (
+            <ChipButton key={a} label={`${a}세`} selected={data.lifeExpectancy === a} onClick={() => onChange({ lifeExpectancy: a })} />
+          ))}
+        </div>
+        <NumberInput label="" value={data.lifeExpectancy} onChange={v => onChange({ lifeExpectancy: v })} unit="세" placeholder="직접 입력" />
+        <p className="text-[11px] text-[#94A3B8] mt-1">기본값 90세. 개인 건강 상태에 따라 조정하세요.</p>
+      </div>
+    </div>
+  )
+}
 
+// ============================================================
+// Step 2 — 자산 현황
+// ============================================================
+function Step2({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const totalCash = (data.bankDeposit || 0) + (data.termDeposit || 0) + (data.savingsAccount || 0) +
+    (data.cmaAccount || 0) + (data.otherSavings || 0) + (data.leaseDeposit || 0)
+  const totalInvestment = (data.stocksEtf || 0) + (data.funds || 0) + (data.bonds || 0) +
+    (data.crypto || 0) + (data.otherInvestments || 0)
+  const totalRealEstate = data.realEstateItems.reduce((s, r) => s + (r.currentValue || 0), 0)
+  const totalRentalDeposit = data.realEstateItems.reduce((s, r) => s + (r.rentalDeposit || 0), 0)
+  const totalAssets = totalCash + totalInvestment + totalRealEstate +
+    (data.pensionBalance || 0) + (data.personalPensionBalance || 0) + (data.otherAssets || 0)
+
+  const addInsurance = () => onChange({
+    insurancePayouts: [...data.insurancePayouts, { id: Date.now(), type: 'surrender', currentAmount: 0 }]
+  })
+  const removeInsurance = (id: number) => onChange({ insurancePayouts: data.insurancePayouts.filter(i => i.id !== id) })
+  const updateInsurance = (id: number, patch: Partial<InsurancePayout>) => onChange({
+    insurancePayouts: data.insurancePayouts.map(i => i.id === id ? { ...i, ...patch } : i)
+  })
+  const addRealEstate = () => onChange({
+    realEstateItems: [...data.realEstateItems, { id: Date.now(), kind: '아파트(수도권)', usage: '자가거주', currentValue: 0, rentalDeposit: 0, monthlyRent: 0 }]
+  })
+  const removeRealEstate = (id: number) => onChange({ realEstateItems: data.realEstateItems.filter(r => r.id !== id) })
+  const updateRealEstate = (id: number, patch: Partial<RealEstateItem>) => onChange({
+    realEstateItems: data.realEstateItems.map(r => r.id === id ? { ...r, ...patch } : r)
+  })
+
+  return (
+    <div>
+      <SectionTitle>자산 현황</SectionTitle>
+      <Notice>모든 금액은 만원 단위로 입력해 주세요. 없는 항목은 비워두세요.</Notice>
+
+      <FieldLabel>현금성 자산</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">적용 금리: 보통예금 0.25% / 정기예금·적금 3.0% / CMA 1.5%</p>
+      <NumberInput label="보통예금" value={data.bankDeposit} onChange={v => onChange({ bankDeposit: v })} unit="만원" />
+      <NumberInput label="정기예금" value={data.termDeposit} onChange={v => onChange({ termDeposit: v })} unit="만원" />
+      <NumberInput label="적금" value={data.savingsAccount} onChange={v => onChange({ savingsAccount: v })} unit="만원" />
+      <NumberInput label="CMA/MMF" value={data.cmaAccount} onChange={v => onChange({ cmaAccount: v })} unit="만원" />
+      <NumberInput label="기타예적금" value={data.otherSavings} onChange={v => onChange({ otherSavings: v })} unit="만원" />
+      <NumberInput label="임차보증금 (전세·월세)" value={data.leaseDeposit} onChange={v => onChange({ leaseDeposit: v })} unit="만원"
+        hint="전세 또는 월세 보증금으로 돌려받을 금액 (수익률 0% 적용)" />
+      <SumBar label="현금성 자산 합계" value={totalCash} />
       <Divider />
 
-      {/* 퇴직연금 */}
-      {hasPension(data.jobType) && (
+      <FieldLabel>투자자산</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">적용 수익률: 5.5% (세후 4.65%)</p>
+      <NumberInput label="주식/ETF" value={data.stocksEtf} onChange={v => onChange({ stocksEtf: v })} unit="만원" />
+      <NumberInput label="펀드" value={data.funds} onChange={v => onChange({ funds: v })} unit="만원" />
+      <NumberInput label="채권" value={data.bonds} onChange={v => onChange({ bonds: v })} unit="만원" />
+      <NumberInput label="가상자산(코인)" value={data.crypto} onChange={v => onChange({ crypto: v })} unit="만원" />
+      <NumberInput label="기타투자" value={data.otherInvestments} onChange={v => onChange({ otherInvestments: v })} unit="만원" />
+      <SumBar label="투자자산 합계" value={totalInvestment} />
+      <Divider />
+
+      <FieldLabel>부동산</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">유형별 상승률 자동 적용 · 임대보증금은 부채로 자동 처리됩니다.</p>
+      {data.realEstateItems.map((item, index) => (
+        <RealEstateCard key={item.id} item={item} index={index}
+          onUpdate={patch => updateRealEstate(item.id, patch)}
+          onRemove={() => removeRealEstate(item.id)} />
+      ))}
+      <button onClick={addRealEstate}
+        className="text-[13px] text-[#1E3A5F] border border-[#1E3A5F] px-4 py-2 rounded-[10px] hover:bg-[#EFF6FF] transition-colors mb-3">
+        + 부동산 추가
+      </button>
+      {data.realEstateItems.length > 0 && (
         <>
-          <h3 className="font-semibold text-gray-700 mb-2">🏦 퇴직연금</h3>
-          <FieldLabel label="유형" />
-          <div className="flex flex-wrap gap-2 mb-3">
-            {(['DB', 'DC', 'IRP', 'none'] as const).map(t => (
-              <ChipButton key={t}
-                label={t === 'none' ? '해당없음' : t}
-                selected={data.pensionType === t}
-                onClick={() => onChange('pensionType', t)} />
+          <SumBar label="부동산 시세 합계" value={totalRealEstate} />
+          {totalRentalDeposit > 0 && (
+            <div className="bg-[#FFF7ED] rounded-[10px] px-4 py-3 flex justify-between items-center mt-2">
+              <span className="text-[13px] text-[#92400E] font-medium">임대보증금 합계 (부채)</span>
+              <span className="text-[15px] font-bold text-[#DC2626]">{formatNumber(totalRentalDeposit)} 만원</span>
+            </div>
+          )}
+        </>
+      )}
+      <Divider />
+
+      <FieldLabel>퇴직연금</FieldLabel>
+      {!hasPension(data.jobType) ? (
+        <div className="bg-[#F8FAFC] rounded-[10px] px-4 py-3 mb-4">
+          <p className="text-[12px] text-[#94A3B8]">
+            개인사업자·프리랜서는 퇴직연금 가입 대상이 아닙니다.<br />
+            IRP 개인 납입이 있다면 아래 개인연금 섹션에 입력해 주세요.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {(['none', 'DB', 'DC', 'IRP'] as const).map(t => (
+              <ChipButton key={t} label={t === 'none' ? '해당없음' : t}
+                selected={data.pensionType === t} onClick={() => onChange({ pensionType: t })} />
             ))}
           </div>
 
-          {data.pensionType !== 'none' && (
+          {data.pensionType === 'DB' && (
+            <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
+              <InfoBox>
+                DB형 (확정급여형) — 퇴직 시점 월급 × 전체 근속연수로 퇴직금이 결정됩니다.
+                회사가 운용하므로 잔액은 입력하지 않아도 됩니다.
+                임금상승률 2% 적용하여 퇴직급여를 자동 계산합니다.
+              </InfoBox>
+              <NumberInput label="현재 근속연수" value={data.yearsOfService}
+                onChange={v => onChange({ yearsOfService: v })} unit="년"
+                hint="현재까지 재직한 연수를 입력하세요 (연봉은 직업정보 Step에서 입력)" />
+            </div>
+          )}
+
+          {data.pensionType === 'DC' && (
+            <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
+              <InfoBox>
+                DC형 (확정기여형) — 매년 연봉의 1/12이 자동 불입됩니다.
+                현재 적립 잔액만 입력하면 퇴직급여를 자동 계산합니다.
+                운용수익률 연 3% 적용.
+              </InfoBox>
+              <NumberInput label="현재 적립 잔액" value={data.pensionBalance}
+                onChange={v => onChange({ pensionBalance: v })} unit="만원" />
+            </div>
+          )}
+
+          {data.pensionType === 'IRP' && (
+            <div className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
+              <InfoBox>
+                IRP (개인형 퇴직연금) — 본인이 직접 납입·운용하는 계좌입니다.
+                연 900만원 한도 세액공제 혜택이 있습니다.
+                운용수익률 연 3% 적용.
+              </InfoBox>
+              <NumberInput label="IRP 잔액" value={data.pensionBalance}
+                onChange={v => onChange({ pensionBalance: v })} unit="만원" />
+              <NumberInput label="월 납입액" value={data.pensionMonthlyContrib}
+                onChange={v => onChange({ pensionMonthlyContrib: v })} unit="만원"
+                hint="매월 본인이 납입하는 금액" />
+            </div>
+          )}
+        </>
+      )}
+      <Divider />
+
+      <FieldLabel>개인연금</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">연금저축펀드·연금저축보험 등 · 운용수익률 연 3% 적용</p>
+      <NumberInput label="개인연금 잔액" value={data.personalPensionBalance}
+        onChange={v => onChange({ personalPensionBalance: v })} unit="만원" />
+      <NumberInput label="월 납입액" value={data.personalPensionMonthly}
+        onChange={v => onChange({ personalPensionMonthly: v })} unit="만원" />
+      <Divider />
+
+      <FieldLabel>국민연금</FieldLabel>
+      <NumberInput label="예상 월 수령액" value={data.nationalPensionExpected}
+        onChange={v => onChange({ nationalPensionExpected: v })} unit="만원"
+        placeholder="국민연금공단 조회 금액"
+        hint="국민연금 홈페이지(nps.or.kr) → 내 연금 알아보기에서 조회하세요" />
+      <Divider />
+
+      <FieldLabel>보험 해약환급금</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">연금 전환형은 개인연금 섹션에 입력해 주세요.</p>
+      {data.insurancePayouts.map((ins) => (
+        <div key={ins.id} className="bg-[#F8FAFC] rounded-[10px] p-4 mb-3">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-[13px] font-semibold text-[#374151]">보험 {data.insurancePayouts.indexOf(ins) + 1}</span>
+            <button onClick={() => removeInsurance(ins.id)} className="text-[#EF4444] text-[12px] px-2 py-1 border border-[#FCA5A5] rounded-[8px]">삭제</button>
+          </div>
+          <div className="flex gap-2 mb-3">
+            <ChipButton label="현재 해약" selected={ins.type === 'surrender'} onClick={() => updateInsurance(ins.id, { type: 'surrender' })} />
+            <ChipButton label="만기 수령" selected={ins.type === 'maturity'} onClick={() => updateInsurance(ins.id, { type: 'maturity' })} />
+          </div>
+          {ins.type === 'surrender' && (
+            <NumberInput label="현재 해약환급금" value={ins.currentAmount}
+              onChange={v => updateInsurance(ins.id, { currentAmount: v })} unit="만원" />
+          )}
+          {ins.type === 'maturity' && (
             <>
-              <FieldLabel label="현재 적립금" />
-              <NumberInput value={data.pensionBalance}
-                onChange={v => onChange('pensionBalance', v)} />
-
-              {/* DB형 전용 */}
-              {data.pensionType === 'DB' && (
-                <>
-                  <div className="mt-2">
-                    <FieldLabel label="근속연수" />
-                    <NumberInput value={data.yearsOfService}
-                      onChange={v => onChange('yearsOfService', v)} unit="년" />
-                  </div>
-                  <div className="mt-2">
-                    <FieldLabel label="퇴직시점 예상 월급여 (선택)"
-                      hint="미입력 시 현재 연봉 기준 연 2% 자동 계산" />
-                    <NumberInput value={data.estimatedRetireMonthlySalary}
-                      onChange={v => onChange('estimatedRetireMonthlySalary', v)}
-                      placeholder="예: 600" />
-                    <p className="text-xs text-gray-400 mt-1">
-                      퇴직 시점 실제 예상 급여를 아신다면 입력해 주세요
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {/* IRP형 전용 */}
-              {data.pensionType === 'IRP' && (
-                <div className="mt-2">
-                  <FieldLabel label="월 납입액" />
-                  <NumberInput value={data.pensionMonthlyContrib}
-                    onChange={v => onChange('pensionMonthlyContrib', v)} />
-                </div>
-              )}
-
-              {/* DC형: 근속연수 불필요, 월 납입액만 */}
-              {data.pensionType === 'DC' && (
-                <InfoBox text="DC형은 연봉의 1/12이 자동으로 매년 적립됩니다. 별도 근속연수 입력은 필요하지 않습니다." />
-              )}
+              <NumberInput label="수령 예정 연도" value={ins.maturityYear || 0}
+                onChange={v => updateInsurance(ins.id, { maturityYear: v })} unit="년" placeholder="예: 2035" />
+              <NumberInput label="예상 수령액" value={ins.maturityAmount || 0}
+                onChange={v => updateInsurance(ins.id, { maturityAmount: v })} unit="만원" />
             </>
           )}
-          <Divider />
-        </>
-      )}
-
-      {/* 개인연금 */}
-      <h3 className="font-semibold text-gray-700 mb-2">🌱 개인연금 (연금저축/IRP)</h3>
-      <FieldLabel label="현재 적립금" />
-      <NumberInput value={data.personalPensionBalance}
-        onChange={v => onChange('personalPensionBalance', v)} />
-      <div className="mt-2">
-        <FieldLabel label="월 납입액" />
-        <NumberInput value={data.personalPensionMonthly}
-          onChange={v => onChange('personalPensionMonthly', v)} />
-      </div>
-
-      <Divider />
-
-      {/* 국민연금 */}
-      <h3 className="font-semibold text-gray-700 mb-2">🇰🇷 국민연금</h3>
-      <FieldLabel label="예상 월 수령액" hint="국민연금공단 예상액" />
-      <NumberInput value={data.nationalPensionExpected}
-        onChange={v => onChange('nationalPensionExpected', v)} />
-
-      <Divider />
-
-      {/* 보험 해약환급금 */}
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-semibold text-gray-700">🛡 보험 해약환급금</h3>
-        <button onClick={addInsurance}
-          className="text-sm text-blue-600 border border-blue-300 rounded-lg px-3 py-1 hover:bg-blue-50">
-          + 추가
-        </button>
-      </div>
-      {data.insurancePayouts.map((ins, i) => (
-        <div key={i} className="border border-gray-200 rounded-xl p-3 mb-3 bg-gray-50">
-          <div className="flex justify-between mb-2">
-            <span className="text-sm font-medium">보험 {i + 1}</span>
-            <button onClick={() => removeInsurance(i)} className="text-xs text-red-400">삭제</button>
-          </div>
-          <FieldLabel label="보험사" />
-          <input value={ins.company} onChange={e => updateInsurance(i, 'company', e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2" placeholder="예: 삼성생명" />
-          <FieldLabel label="종류" />
-          <input value={ins.type} onChange={e => updateInsurance(i, 'type', e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2" placeholder="예: 종신보험" />
-          <FieldLabel label="해약환급금" />
-          <NumberInput value={ins.amount} onChange={v => updateInsurance(i, 'amount', v)} />
         </div>
       ))}
-
+      <button onClick={addInsurance}
+        className="text-[13px] text-[#1E3A5F] border border-[#1E3A5F] px-4 py-2 rounded-[10px] hover:bg-[#EFF6FF] transition-colors mb-4">
+        + 보험 추가
+      </button>
       <Divider />
-      <SumBar label="총 자산 합계" value={grandTotal} />
+      <NumberInput label="기타 자산" value={data.otherAssets}
+        onChange={v => onChange({ otherAssets: v })} unit="만원" placeholder="미술품, 골프회원권 등" />
+      <SumBar label="총 자산 합계" value={totalAssets} />
     </div>
-  );
-};
+  )
+}
 
-/* ───────────────── Step 3: 부채 현황 ───────────────── */
-const Step3 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
-  const leaseFromRE = data.realEstateItems.reduce((s, r) => s + (r.leaseDeposit || 0), 0);
-  const loanTotal = data.loans.reduce((s, l) => s + l.balance, 0);
-  const totalDebt = loanTotal + leaseFromRE;
+// ============================================================
+// Step 3 — 부채 현황
+// ============================================================
+function Step3({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const loanTypes = ['주택담보대출', '신용대출', '전세대출', '사업자대출', '기타대출']
+  const totalLoanDebt = data.loans.reduce((s, l) => s + (l.balance || 0), 0)
+  const totalRentalDeposit = data.realEstateItems.reduce((s, r) => s + (r.rentalDeposit || 0), 0)
+  const totalDebt = totalLoanDebt + totalRentalDeposit
+  const totalMonthly = data.loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0)
 
-  const addLoan = () => onChange('loans', [...data.loans, {
-    type: '주택담보대출', balance: 0, monthlyPayment: 0,
-    interestRate: 0, remainingMonths: 0, repayType: '원리금균등'
-  }]);
-  const updateLoan = (i: number, key: keyof LoanDetail, v: any) => {
-    const arr = [...data.loans];
-    arr[i] = { ...arr[i], [key]: v };
-    onChange('loans', arr);
-  };
-  const removeLoan = (i: number) => onChange('loans', data.loans.filter((_, idx) => idx !== i));
-
-  const calcMonthly = (l: LoanDetail) => {
-    if (!l.balance || !l.interestRate || !l.remainingMonths) return 0;
-    const r = l.interestRate / 100 / 12;
-    const n = l.remainingMonths;
-    if (l.repayType === '만기일시') return Math.round(l.balance * r);
-    if (l.repayType === '원리금균등') return Math.round(l.balance * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1));
-    return Math.round(l.balance / n + l.balance * r);
-  };
+  const addLoan = () => onChange({
+    loans: [...data.loans, { id: Date.now(), type: '주택담보대출', balance: 0, monthlyPayment: 0, interestRate: 0, remainingMonths: 0, repayType: 'equal_principal_interest' }]
+  })
+  const removeLoan = (id: number) => onChange({ loans: data.loans.filter(l => l.id !== id) })
+  const updateLoan = (id: number, patch: Partial<LoanDetail>) => onChange({
+    loans: data.loans.map(l => l.id === id ? { ...l, ...patch } : l)
+  })
 
   return (
     <div>
-      <SectionTitle title="부채 현황" sub="대출 정보를 입력하시면 월 상환액을 자동 계산해 드립니다." />
-
-      {leaseFromRE > 0 && (
-        <Notice text={`부동산 임대보증금 ${leaseFromRE.toLocaleString()}만원이 부채로 반영되었습니다.`} />
+      <SectionTitle>부채 현황</SectionTitle>
+      <Notice>모든 대출을 빠짐없이 입력해 주세요. 정확한 현금흐름 계산에 사용됩니다.</Notice>
+      {totalRentalDeposit > 0 && (
+        <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-[10px] px-4 py-3 mb-4">
+          <p className="text-[12px] text-[#92400E] font-semibold mb-1">자동 반영: 임대보증금</p>
+          {data.realEstateItems.filter(r => r.rentalDeposit > 0).map(r => (
+            <p key={r.id} className="text-[12px] text-[#92400E]">
+              {r.kind} ({USAGE_LABELS[r.usage]}): {formatNumber(r.rentalDeposit)} 만원
+            </p>
+          ))}
+          <p className="text-[12px] text-[#92400E] font-semibold mt-1">합계: {formatNumber(totalRentalDeposit)} 만원</p>
+        </div>
       )}
+      {data.loans.map((loan) => (
+        <div key={loan.id} className="bg-[#F8FAFC] rounded-[10px] p-4 mb-4">
+          <div className="flex justify-between items-center mb-3">
+            <FieldLabel>대출 유형</FieldLabel>
+            <button onClick={() => removeLoan(loan.id)} className="text-[#EF4444] text-[12px] px-2 py-1 border border-[#FCA5A5] rounded-[8px]">삭제</button>
+          </div>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {loanTypes.map(t => (
+              <MultiChipButton key={t} label={t} selected={loan.type === t} onClick={() => updateLoan(loan.id, { type: t })} />
+            ))}
+          </div>
+          <NumberInput label="대출 잔액" value={loan.balance} onChange={v => updateLoan(loan.id, { balance: v })} unit="만원" />
+          <NumberInput label="연 이자율" value={loan.interestRate} onChange={v => updateLoan(loan.id, { interestRate: v })} unit="%" placeholder="예: 4.5" allowDecimal={true} />
+          <NumberInput label="잔여 기간" value={loan.remainingMonths} onChange={v => updateLoan(loan.id, { remainingMonths: v })} unit="개월" />
+          <FieldLabel>상환 방식</FieldLabel>
+          <RepayTypeSelector value={loan.repayType} onChange={v => updateLoan(loan.id, { repayType: v })} />
+          {loan.repayType === 'equal_principal_interest' && (
+            <NumberInput label="월 납입액 (원금+이자)" value={loan.monthlyPayment}
+              onChange={v => updateLoan(loan.id, { monthlyPayment: v })} unit="만원"
+              hint="원금과 이자가 합산된 금액을 입력하세요" />
+          )}
+          {loan.repayType === 'equal_principal' && (
+            <NumberInput label="월 납입 원금" value={loan.monthlyPayment}
+              onChange={v => updateLoan(loan.id, { monthlyPayment: v })} unit="만원"
+              hint="원금만 입력하세요 (이자는 자동 계산)" />
+          )}
+          {loan.repayType === 'bullet' && (
+            <div className="bg-[#FFF7ED] rounded-[8px] px-3 py-2 text-[12px] text-[#92400E]">
+              만기일시상환: 매월 이자만 납부, 만기 시 원금 일시 상환
+            </div>
+          )}
+        </div>
+      ))}
+      <button onClick={addLoan}
+        className="text-[13px] text-[#1E3A5F] border border-[#1E3A5F] px-4 py-2 rounded-[10px] hover:bg-[#EFF6FF] transition-colors mb-4">
+        + 대출 추가
+      </button>
+      <SumBar label="대출 합계" value={totalLoanDebt} />
+      {totalRentalDeposit > 0 && <SumBar label="임대보증금 합계" value={totalRentalDeposit} />}
+      <SumBar label="총 부채 합계" value={totalDebt} />
+      {totalMonthly > 0 && <SumBar label="월 대출 상환액" value={totalMonthly} />}
+    </div>
+  )
+}
 
-      <div className="flex justify-between items-center mt-4 mb-2">
-        <h3 className="font-semibold text-gray-700">대출 목록</h3>
-        <button onClick={addLoan}
-          className="text-sm text-blue-600 border border-blue-300 rounded-lg px-3 py-1 hover:bg-blue-50">
-          + 대출 추가
-        </button>
+// ============================================================
+// Step 4 — 수입 / 지출
+// ============================================================
+function Step4({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const totalRentalIncome = calcTotalRentalIncome(data.realEstateItems)
+  const totalIncome = (data.salary || 0) + (data.businessIncome || 0) +
+    totalRentalIncome + (data.dividendIncome || 0) + (data.otherIncome || 0)
+  const totalLoanPayment = data.loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0)
+  const totalExpense = (data.housingCost || 0) + (data.foodLife || 0) + (data.transportation || 0) +
+    (data.communication || 0) + (data.insurance || 0) + (data.medicalEducation || 0) +
+    (data.leisureSocial || 0) + (data.otherExpense || 0) + totalLoanPayment
+  const netCashflow = totalIncome - totalExpense
+
+  return (
+    <div>
+      <SectionTitle>수입 / 지출</SectionTitle>
+      <Notice>가구 합산 기준으로 입력해 주세요. 세후(실수령) 금액 기준입니다.</Notice>
+      <FieldLabel>월 수입</FieldLabel>
+      <NumberInput label="근로소득 (세후)" value={data.salary} onChange={v => onChange({ salary: v })} unit="만원" />
+      <NumberInput label="사업소득 (세후)" value={data.businessIncome} onChange={v => onChange({ businessIncome: v })} unit="만원" />
+      <div className="mb-4">
+        <FieldLabel>임대소득</FieldLabel>
+        <div className="relative">
+          <input type="text" readOnly value={formatNumber(totalRentalIncome) || '0'}
+            className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#94A3B8] bg-[#F8FAFC]" />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#94A3B8]">만원</span>
+        </div>
+        <p className="text-[11px] text-[#94A3B8] mt-1">자산 입력(Step 2)의 부동산 월 임대료 합계가 자동 반영됩니다.</p>
+      </div>
+      <NumberInput label="배당/이자소득" value={data.dividendIncome} onChange={v => onChange({ dividendIncome: v })} unit="만원" />
+      <NumberInput label="기타 수입" value={data.otherIncome} onChange={v => onChange({ otherIncome: v })} unit="만원" />
+      <SumBar label="월 수입 합계" value={totalIncome} />
+      <Divider />
+      <FieldLabel>월 지출</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">각 항목에 해당하는 지출을 합산하여 입력해 주세요.</p>
+      <NumberInput label="주거비" value={data.housingCost} onChange={v => onChange({ housingCost: v })} unit="만원" hint="관리비, 공과금, 월세 포함" />
+      <NumberInput label="식비·생활용품" value={data.foodLife} onChange={v => onChange({ foodLife: v })} unit="만원" hint="식료품, 외식, 생활용품 포함" />
+      <NumberInput label="교통비" value={data.transportation} onChange={v => onChange({ transportation: v })} unit="만원" hint="대중교통, 주유비, 자동차 유지비 포함" />
+      <NumberInput label="통신비" value={data.communication} onChange={v => onChange({ communication: v })} unit="만원" hint="휴대폰, 인터넷, 구독서비스 포함" />
+      <NumberInput label="보험료" value={data.insurance} onChange={v => onChange({ insurance: v })} unit="만원" hint="생명·건강·자동차보험 등 전체" />
+      <NumberInput label="의료·교육비" value={data.medicalEducation} onChange={v => onChange({ medicalEducation: v })} unit="만원" hint="병원비, 약값, 학원비, 자녀교육비 포함" />
+      <NumberInput label="여가·문화·경조사" value={data.leisureSocial} onChange={v => onChange({ leisureSocial: v })} unit="만원" hint="여행, 취미, 경조사, 회식 포함" />
+      <NumberInput label="기타 지출" value={data.otherExpense} onChange={v => onChange({ otherExpense: v })} unit="만원" />
+      <div className="mb-4">
+        <FieldLabel>대출 상환액 (자동 계산)</FieldLabel>
+        <div className="relative">
+          <input type="text" readOnly value={formatNumber(totalLoanPayment) || '0'}
+            className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#94A3B8] bg-[#F8FAFC]" />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#94A3B8]">만원</span>
+        </div>
+        <p className="text-[11px] text-[#94A3B8] mt-1">Step 3에서 입력한 대출 월 납입액 합계가 자동 반영됩니다.</p>
+      </div>
+      <SumBar label="월 지출 합계" value={totalExpense} />
+      <div className={`rounded-[10px] px-4 py-3 flex justify-between items-center mt-2 ${netCashflow >= 0 ? 'bg-[#F0FDF4]' : 'bg-[#FFF1F2]'}`}>
+        <span className="text-[13px] font-medium">월 순현금흐름</span>
+        <span className={`text-[15px] font-bold ${netCashflow >= 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+          {netCashflow >= 0 ? '+' : ''}{formatNumber(netCashflow)} 만원
+        </span>
+      </div>
+      {netCashflow < 0 && <p className="text-[11px] text-[#DC2626] mt-1">지출이 수입을 초과합니다. 은퇴 자산 계산 시 부족분이 반영됩니다.</p>}
+      {netCashflow > 0 && <p className="text-[11px] text-[#16A34A] mt-1">잉여 현금흐름은 연 3% 수익률로 재투자되어 은퇴 자산에 반영됩니다.</p>}
+      <Divider />
+      <FieldLabel>보험 가입 현황</FieldLabel>
+      <p className="text-[11px] text-[#94A3B8] mb-3">가입된 보험을 모두 선택해 주세요.</p>
+      <div className="flex gap-2 flex-wrap mb-3">
+        <MultiChipButton label="실손보험" selected={data.hasLossInsurance} onClick={() => onChange({ hasLossInsurance: !data.hasLossInsurance })} />
+        <MultiChipButton label="종신·정기보험" selected={data.hasLifeInsurance} onClick={() => onChange({ hasLifeInsurance: !data.hasLifeInsurance })} />
+        <MultiChipButton label="암·CI보험" selected={data.hasCancerInsurance} onClick={() => onChange({ hasCancerInsurance: !data.hasCancerInsurance })} />
+        <MultiChipButton label="연금보험" selected={data.hasAnnuityInsurance} onClick={() => onChange({ hasAnnuityInsurance: !data.hasAnnuityInsurance })} />
+      </div>
+      <InfoBox>입력하신 정보를 바탕으로 보장 공백 분석 및 맞춤 보험 설계 서비스를 제공받으실 수 있습니다.</InfoBox>
+    </div>
+  )
+}
+
+// ============================================================
+// Step 5 — 직업 정보
+// ============================================================
+function Step5({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const isEmployee  = data.jobType === 'employee'
+  const isCorporate = data.jobType === 'corporate'
+  const isSelf      = data.jobType === 'self_employed'
+  const isFreelance = data.jobType === 'freelancer'
+
+  return (
+    <div>
+      <SectionTitle>직업 정보</SectionTitle>
+      <p className="text-[12px] text-[#94A3B8] mb-5">직업 유형에 따라 절세 전략과 퇴직급여 계산이 달라집니다.</p>
+
+      <div className="mb-5">
+        <FieldLabel>직업 유형</FieldLabel>
+        <div className="flex gap-2 flex-wrap">
+          {([
+            { value: 'employee',      label: '직장인'     },
+            { value: 'self_employed', label: '개인사업자' },
+            { value: 'corporate',     label: '법인대표'   },
+            { value: 'freelancer',    label: '프리랜서'   },
+          ] as const).map(j => (
+            <ChipButton key={j.value} label={j.label}
+              selected={data.jobType === j.value}
+              onClick={() => onChange({ jobType: j.value })} />
+          ))}
+        </div>
       </div>
 
-      {data.loans.map((loan, i) => {
-        const monthly = calcMonthly(loan);
-        return (
-          <div key={i} className="border border-gray-200 rounded-xl p-3 mb-3 bg-gray-50">
-            <div className="flex justify-between mb-2">
-              <span className="text-sm font-medium">대출 {i + 1}</span>
-              <button onClick={() => removeLoan(i)} className="text-xs text-red-400">삭제</button>
-            </div>
-            <FieldLabel label="대출 유형" />
-            <div className="flex flex-wrap gap-2 mb-2">
-              {['주택담보대출', '전세자금대출', '신용대출', '사업자대출', '기타'].map(t => (
-                <ChipButton key={t} label={t} selected={loan.type === t}
-                  onClick={() => updateLoan(i, 'type', t)} />
+      {isEmployee && (
+        <div>
+          <InfoBox>직장인은 연봉을 기반으로 DB/DC 퇴직급여를 자동 계산합니다.</InfoBox>
+          <NumberInput label="연봉 (세전)" value={data.annualSalary}
+            onChange={v => onChange({ annualSalary: v })} unit="만원"
+            hint="DB형 퇴직급여·DC형 연간 불입액 계산에 사용됩니다" />
+        </div>
+      )}
+
+      {isCorporate && (
+        <div>
+          <InfoBox>
+            법인대표는 급여와 배당 비율 설계가 핵심 절세 전략입니다.
+            급여는 근로소득세, 배당은 배당소득세(15.4%)가 적용됩니다.
+          </InfoBox>
+          <NumberInput label="법인 급여 (세전 연봉)" value={data.annualSalary}
+            onChange={v => onChange({ annualSalary: v })} unit="만원" />
+          <NumberInput label="연간 배당 수령액" value={data.annualDividend}
+            onChange={v => onChange({ annualDividend: v })} unit="만원"
+            hint="법인으로부터 수령한 배당금 (연간 합계)" />
+        </div>
+      )}
+
+      {isSelf && (
+        <div>
+          <InfoBox>
+            개인사업자는 종합소득세 절세가 핵심입니다.
+            매출과 순이익을 기반으로 맞춤 절세 전략을 제안해드립니다.
+          </InfoBox>
+          <NumberInput label="연 매출 (연간 총 매출액)" value={data.annualRevenue}
+            onChange={v => onChange({ annualRevenue: v })} unit="만원" />
+          <NumberInput label="연 순이익 (세전)" value={data.annualNetIncome}
+            onChange={v => onChange({ annualNetIncome: v })} unit="만원"
+            hint="매출 - 비용 후 남은 금액 (세전 기준)" />
+          <Divider />
+          <FieldLabel>절세 항목</FieldLabel>
+          <NumberInput label="노란우산공제 월 납입액" value={data.yellowUmbrellaContrib}
+            onChange={v => onChange({ yellowUmbrellaContrib: v })} unit="만원"
+            hint="소기업·소상공인 전용 · 연 최대 500만원 소득공제" />
+          <div className="mb-4">
+            <FieldLabel>장부 유형</FieldLabel>
+            <div className="flex gap-2">
+              {([
+                { value: 'simple', label: '간편장부' },
+                { value: 'double', label: '복식장부' },
+                { value: 'none',   label: '무기장'   },
+              ] as const).map(b => (
+                <ChipButton key={b.value} label={b.label}
+                  selected={data.bookkeepingType === b.value}
+                  onClick={() => onChange({ bookkeepingType: b.value })} />
               ))}
             </div>
-            <FieldLabel label="대출 잔액" />
-            <NumberInput value={loan.balance} onChange={v => updateLoan(i, 'balance', v)} />
-            <div className="mt-2">
-              <FieldLabel label="연 이자율" />
-              <NumberInput value={loan.interestRate}
-                onChange={v => updateLoan(i, 'interestRate', v)} unit="%" />
-            </div>
-            <div className="mt-2">
-              <FieldLabel label="잔여 개월 수" />
-              <NumberInput value={loan.remainingMonths}
-                onChange={v => updateLoan(i, 'remainingMonths', v)} unit="개월" />
-            </div>
-            <div className="mt-2">
-              <FieldLabel label="상환 방식" />
-              <RepayTypeSelector value={loan.repayType}
-                onChange={v => updateLoan(i, 'repayType', v)} />
-            </div>
-            {monthly > 0 && (
-              <div className="mt-3 bg-white rounded-lg px-3 py-2 border border-blue-100">
-                <span className="text-xs text-blue-500">월 상환액 (자동계산)</span>
-                <p className="text-base font-bold text-blue-700">{monthly.toLocaleString()} 만원</p>
-              </div>
-            )}
+            <p className="text-[11px] text-[#94A3B8] mt-1">복식장부는 결손금 이월 등 추가 혜택이 있습니다.</p>
           </div>
-        );
-      })}
-
-      <SumBar label="총 부채 합계" value={totalDebt} />
-    </div>
-  );
-};
-
-/* ───────────────── Step 4: 수입/지출 ───────────────── */
-const Step4 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
-  const rentalIncome = data.realEstateItems.reduce((s, r) => s + (r.isRental ? r.rentalMonthly : 0), 0);
-  const monthlyIncome = Math.round(data.salary / 12) + data.businessIncome
-    + rentalIncome + data.dividendIncome + data.otherIncome;
-  const monthlyExpense = data.housingCost + data.foodLife + data.transportation
-    + data.communication + data.healthMedical + data.educationChild
-    + data.leisureCulture + data.otherExpenses + data.insurancePremium;
-  const loanMonthly = data.loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
-  const netCashFlow = monthlyIncome - monthlyExpense - loanMonthly;
-  const surplusReinvested = netCashFlow > 0
-    ? Math.round(netCashFlow * Math.pow(1 + 0.03 / 12, 120))
-    : 0;
-
-  return (
-    <div>
-      <SectionTitle title="수입 / 지출" sub="월 기준으로 입력해주세요." />
-
-      <h3 className="font-semibold text-gray-700 mb-2">💵 월 수입</h3>
-      <FieldLabel label="근로소득 (연봉)" hint="연봉 입력 → 자동으로 ÷12" />
-      <NumberInput value={data.salary} onChange={v => onChange('salary', v)} unit="만원/년" />
-      <div className="mt-2">
-        <FieldLabel label="사업소득 (월)" />
-        <NumberInput value={data.businessIncome} onChange={v => onChange('businessIncome', v)} />
-      </div>
-      <div className="mt-2">
-        <FieldLabel label="임대소득 (월)" hint="부동산 임대 입력 기준 자동 반영" />
-        <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-right text-gray-600 text-sm">
-          {rentalIncome.toLocaleString()} 만원
         </div>
-      </div>
-      <div className="mt-2">
-        <FieldLabel label="배당소득 (월)" />
-        <NumberInput value={data.dividendIncome} onChange={v => onChange('dividendIncome', v)} />
-      </div>
-      <div className="mt-2">
-        <FieldLabel label="기타 소득 (월)" />
-        <NumberInput value={data.otherIncome} onChange={v => onChange('otherIncome', v)} />
-      </div>
-      <SumBar label="월 총 수입" value={monthlyIncome} />
+      )}
+
+      {isFreelance && (
+        <div>
+          <InfoBox>
+            프리랜서(3.3% 원천징수)는 종합소득세 신고를 통해
+            납부한 세금을 환급받거나 추가 공제를 받을 수 있습니다.
+          </InfoBox>
+          <NumberInput label="연 수입 (연간 총 수령액)" value={data.annualRevenue}
+            onChange={v => onChange({ annualRevenue: v })} unit="만원"
+            hint="3.3% 원천징수 전 금액 기준" />
+          <NumberInput label="연 순이익 (경비 제외 후)" value={data.annualNetIncome}
+            onChange={v => onChange({ annualNetIncome: v })} unit="만원"
+            hint="업무 관련 경비를 제외한 실질 소득" />
+          <Divider />
+          <FieldLabel>절세 항목</FieldLabel>
+          <NumberInput label="노란우산공제 월 납입액" value={data.yellowUmbrellaContrib}
+            onChange={v => onChange({ yellowUmbrellaContrib: v })} unit="만원"
+            hint="소기업·소상공인 해당 시 · 연 최대 500만원 소득공제" />
+        </div>
+      )}
 
       <Divider />
-
-      <h3 className="font-semibold text-gray-700 mb-2">💸 월 지출</h3>
-      {[
-        ['주거비 (월세/관리비)', 'housingCost'],
-        ['식비/생활비', 'foodLife'],
-        ['교통비', 'transportation'],
-        ['통신비', 'communication'],
-        ['의료/건강', 'healthMedical'],
-        ['교육/자녀', 'educationChild'],
-        ['여가/문화', 'leisureCulture'],
-        ['기타 지출', 'otherExpenses'],
-        ['보험료', 'insurancePremium'],
-      ].map(([label, key]) => (
-        <div key={key} className="mt-2">
-          <FieldLabel label={label} />
-          <NumberInput value={(data as any)[key]}
-            onChange={v => onChange(key as keyof FormData, v)} />
-        </div>
-      ))}
-      <SumBar label="월 총 지출" value={monthlyExpense} />
-
-      <Divider />
-
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <p className="text-sm text-gray-500 mb-1">월 순현금흐름</p>
-        <p className={`text-xl font-bold ${netCashFlow >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
-          {netCashFlow >= 0 ? '+' : ''}{netCashFlow.toLocaleString()} 만원
+      <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px] p-4">
+        <p className="text-[14px] font-semibold text-[#1E293B] mb-1">세금 절세 전략 상담</p>
+        <p className="text-[13px] text-[#475569] mb-1">이흥준 공인회계사/세무사</p>
+        <p className="text-[12px] text-[#94A3B8] mb-3">
+          근로소득 · 사업소득 · 법인 절세 · 퇴직금 설계 상담
         </p>
-        {netCashFlow > 0 && (
-          <p className="text-xs text-gray-400 mt-1">
-            잉여자금 10년 재투자(연 3%) 가정 시 → 약 {surplusReinvested.toLocaleString()} 만원
-          </p>
-        )}
+        <a href="tel:01024981905"
+          className="inline-block bg-[#1E3A5F] text-white text-[13px] font-medium px-4 py-2.5 rounded-[10px] hover:bg-[#1E3A5F]/90 transition-colors">
+          010-2498-1905 무료 상담
+        </a>
       </div>
+    </div>
+  )
+}
 
-      <Divider />
-
-      <h3 className="font-semibold text-gray-700 mb-2">🛡 보험 가입 현황</h3>
-      {[
-        ['실손보험', 'hasLossInsurance'],
-        ['종신/정기보험', 'hasLifeInsurance'],
-        ['암보험', 'hasCancerInsurance'],
-        ['연금보험', 'hasAnnuityInsurance'],
-      ].map(([label, key]) => (
-        <div key={key} className="flex items-center justify-between py-2 border-b border-gray-100">
-          <span className="text-sm text-gray-700">{label}</span>
-          <div className="flex gap-2">
-            <ChipButton label="가입" selected={(data as any)[key] === true}
-              onClick={() => onChange(key as keyof FormData, true)} />
-            <ChipButton label="미가입" selected={(data as any)[key] === false}
-              onClick={() => onChange(key as keyof FormData, false)} />
-          </div>
+// ============================================================
+// Step 6 — 은퇴 목표
+// ============================================================
+function Step6({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
+  const age = calcAge(data.birthYear, data.birthMonth)
+  const yearsToRetirement = data.retirementTargetAge - age
+  const retirementPeriod = data.lifeExpectancy - data.retirementTargetAge
+  return (
+    <div>
+      <SectionTitle>은퇴 목표</SectionTitle>
+      <p className="text-[12px] text-[#94A3B8] mb-6">은퇴 후 원하는 생활 수준을 입력해 주세요.</p>
+      {age > 0 && (
+        <div className="bg-[#EFF6FF] rounded-[10px] px-4 py-3 mb-5 text-[13px] text-[#1E40AF]">
+          현재 {age}세 → 은퇴까지 약 <strong>{yearsToRetirement}년</strong> · 은퇴 후 약 <strong>{retirementPeriod}년</strong> 생존 기간 가정
         </div>
-      ))}
-      <InfoBox text="보험은 보장 공백이 없는지 확인이 중요합니다. 진단 후 맞춤 제안을 드립니다." />
+      )}
+      <NumberInput label="은퇴 후 월 희망 생활비" value={data.retirementMonthlyExpense}
+        onChange={v => onChange({ retirementMonthlyExpense: v })} unit="만원"
+        hint="현재 물가 기준으로 입력하세요. 은퇴 시점까지 물가상승률 2.5% 자동 반영됩니다." />
     </div>
-  );
-};
+  )
+}
 
-/* ───────────────── Step 5: 직업 정보 ───────────────── */
-const Step5 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
+// ============================================================
+// Step 7 — 연락처
+// ============================================================
+function Step7({ data, onChange }: { data: FormData; onChange: (d: Partial<FormData>) => void }) {
   return (
     <div>
-      <SectionTitle title="직업 정보" sub="직업 유형에 맞게 입력하시면 더 정확한 절세 전략을 제안드립니다." />
-
-      <FieldLabel label="직업 유형" />
-      <div className="flex flex-wrap gap-2 mb-4">
-        {[
-          { value: 'employee', label: '직장인' },
-          { value: 'self_employed', label: '개인사업자' },
-          { value: 'corporate', label: '법인대표' },
-          { value: 'freelancer', label: '프리랜서' },
-        ].map(({ value, label }) => (
-          <ChipButton key={value} label={label}
-            selected={data.jobType === value as any}
-            onClick={() => onChange('jobType', value)} />
-        ))}
+      <SectionTitle>연락처</SectionTitle>
+      <p className="text-[12px] text-[#94A3B8] mb-6">진단 보고서를 받으실 연락처를 입력해 주세요.</p>
+      <div className="mb-4">
+        <FieldLabel>이름</FieldLabel>
+        <input type="text" value={data.name} onChange={e => onChange({ name: e.target.value })}
+          placeholder="실명을 입력해 주세요"
+          className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]" />
       </div>
-
-      {/* 직장인 */}
-      {data.jobType === 'employee' && (
-        <>
-          <InfoBox text="직장인은 연말정산을 통해 IRP·연금저축 세액공제(최대 900만원)를 활용할 수 있습니다." />
-          <div className="mt-3">
-            <FieldLabel label="연봉 (세전)" />
-            <NumberInput value={data.annualSalary}
-              onChange={v => onChange('annualSalary', v)} unit="만원/년" />
-          </div>
-        </>
-      )}
-
-      {/* 개인사업자 */}
-      {data.jobType === 'self_employed' && (
-        <>
-          <InfoBox text="개인사업자는 노란우산공제로 최대 500만원 소득공제가 가능하고, 국민연금 임의가입도 활용 가능합니다." />
-          <div className="mt-3">
-            <FieldLabel label="연 매출" />
-            <NumberInput value={data.businessRevenue}
-              onChange={v => onChange('businessRevenue', v)} unit="만원/년" />
-          </div>
-          <div className="mt-2">
-            <FieldLabel label="연 순이익" />
-            <NumberInput value={data.businessProfit}
-              onChange={v => onChange('businessProfit', v)} unit="만원/년" />
-          </div>
-          <div className="mt-2">
-            <FieldLabel label="노란우산공제 납입액" hint="연간 납입액" />
-            <NumberInput value={data.yellowUmbrellaAmount}
-              onChange={v => onChange('yellowUmbrellaAmount', v)} unit="만원/년" />
-          </div>
-        </>
-      )}
-
-      {/* 법인대표 */}
-      {data.jobType === 'corporate' && (
-        <>
-          <InfoBox text="법인대표는 임원퇴직금 규정 설정, 법인 명의 보험, 가지급금 정리 등 다양한 절세 전략이 있습니다." />
-          <div className="mt-3">
-            <FieldLabel label="연봉 (세전)" />
-            <NumberInput value={data.annualSalary}
-              onChange={v => onChange('annualSalary', v)} unit="만원/년" />
-          </div>
-          <div className="mt-2">
-            <FieldLabel label="배당 수령액" hint="연간" />
-            <NumberInput value={data.dividendAmount}
-              onChange={v => onChange('dividendAmount', v)} unit="만원/년" />
-          </div>
-        </>
-      )}
-
-      {/* 프리랜서 */}
-      {data.jobType === 'freelancer' && (
-        <>
-          <InfoBox text="프리랜서는 종합소득세 신고를 통해 각종 필요경비를 공제받을 수 있으며, IRP 납입으로 세액공제도 가능합니다." />
-          <div className="mt-3">
-            <FieldLabel label="연 소득" hint="3.3% 원천징수 전 금액" />
-            <NumberInput value={data.businessProfit}
-              onChange={v => onChange('businessProfit', v)} unit="만원/년" />
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-/* ───────────────── Step 6: 은퇴 목표 ───────────────── */
-const Step6 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => {
-  const currentYear = new Date().getFullYear();
-  const age = data.birthYear ? currentYear - data.birthYear : 0;
-  const yearsToRetire = data.retirementTargetAge - age;
-  const inflationAdjusted = data.retirementGoalExpense > 0
-    ? Math.round(data.retirementGoalExpense * Math.pow(1.025, yearsToRetire))
-    : 0;
-
-  return (
-    <div>
-      <SectionTitle title="은퇴 목표" sub="원하시는 은퇴 후 생활 수준을 알려주세요." />
-
-      <div className="bg-blue-50 rounded-xl p-4 mb-4">
-        <p className="text-sm text-gray-600">현재 나이: <strong>{age}세</strong></p>
-        <p className="text-sm text-gray-600">목표 은퇴: <strong>{data.retirementTargetAge}세</strong></p>
-        <p className="text-sm text-gray-600">남은 기간: <strong>{yearsToRetire > 0 ? `${yearsToRetire}년` : '이미 은퇴 시점'}</strong></p>
-        <p className="text-sm text-gray-600">은퇴 후 기간: <strong>{data.lifeExpectancy - data.retirementTargetAge}년</strong></p>
+      <div className="mb-4">
+        <FieldLabel>휴대폰 번호</FieldLabel>
+        <input type="tel" value={data.phone} onChange={e => onChange({ phone: e.target.value })}
+          placeholder="010-0000-0000"
+          className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]" />
       </div>
-
-      <FieldLabel label="은퇴 후 월 생활비 목표" hint="현재 물가 기준" />
-      <NumberInput value={data.retirementGoalExpense}
-        onChange={v => onChange('retirementGoalExpense', v)} />
-
-      {inflationAdjusted > 0 && (
-        <InfoBox text={`물가상승률 2.5% 반영 시 은퇴 시점 필요 생활비: 약 ${inflationAdjusted.toLocaleString()}만원/월`} />
-      )}
+      <div className="mb-4">
+        <FieldLabel>이메일 (선택)</FieldLabel>
+        <input type="email" value={data.email} onChange={e => onChange({ email: e.target.value })}
+          placeholder="example@email.com"
+          className="w-full border border-[#CBD5E1] rounded-[10px] px-3 py-2.5 text-[14px] text-[#1E293B] bg-white focus:outline-none focus:border-[#1E3A5F]" />
+      </div>
+      <div className="flex items-start gap-3 mt-4 p-4 bg-[#F8FAFC] rounded-[10px]">
+        <input type="checkbox" id="privacy" checked={data.privacyAgree}
+          onChange={e => onChange({ privacyAgree: e.target.checked })}
+          className="mt-0.5 w-4 h-4 accent-[#1E3A5F]" />
+        <label htmlFor="privacy" className="text-[12px] text-[#475569] leading-relaxed">
+          개인정보 수집·이용에 동의합니다. 입력하신 정보는 재무 진단 서비스 제공 목적으로만 사용되며, 제3자에게 제공되지 않습니다.
+        </label>
+      </div>
     </div>
-  );
-};
+  )
+}
 
-/* ───────────────── Step 7: 연락처 + CPA 광고 ───────────────── */
-const Step7 = ({ data, onChange }: { data: FormData; onChange: (k: keyof FormData, v: any) => void }) => (
-  <div>
-    <SectionTitle title="연락처" sub="진단 결과를 받으실 정보를 입력해주세요." />
-
-    <FieldLabel label="이름" />
-    <input value={data.name}
-      onChange={e => onChange('name', e.target.value)}
-      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3"
-      placeholder="홍길동" />
-
-    <FieldLabel label="휴대폰 번호" />
-    <input value={data.phone}
-      onChange={e => onChange('phone', e.target.value.replace(/\D/g, ''))}
-      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3"
-      placeholder="01012345678" maxLength={11} inputMode="tel" />
-
-    <FieldLabel label="이메일" />
-    <input value={data.email}
-      onChange={e => onChange('email', e.target.value)}
-      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3"
-      placeholder="example@email.com" type="email" />
-
-    <Divider />
-
-    {/* ✅ CPA 광고 – 전 직업군 표시, 제출 직전 위치 */}
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mb-4">
-      <p className="text-sm font-bold text-blue-800 mb-1">📊 세금 & 절세 전략이 궁금하신가요?</p>
-      <p className="text-xs text-blue-600 mb-2">
-        공인회계사 이흥준 세무사가 직접 절세 플랜을 도와드립니다.<br />
-        근로소득 · 사업소득 · 법인 절세 · 퇴직금 설계 모두 상담 가능합니다.
-      </p>
-      <a href="tel:01024981905"
-        className="inline-block bg-blue-600 text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-        📞 010-2498-1905 무료 상담
-      </a>
-    </div>
-
-    <div className="flex items-start gap-2">
-      <input type="checkbox" id="privacy" checked={data.privacyAgree}
-        onChange={e => onChange('privacyAgree', e.target.checked)}
-        className="mt-1 w-4 h-4 accent-blue-600" />
-      <label htmlFor="privacy" className="text-xs text-gray-500">
-        개인정보 수집 및 이용에 동의합니다.<br />
-        <span className="text-gray-400">(수집항목: 이름, 연락처, 재무정보 / 목적: 재무진단 서비스 제공 / 보유기간: 1년)</span>
-      </label>
-    </div>
-  </div>
-);
-
-/* ───────────────── 메인 컴포넌트 ───────────────── */
+// ============================================================
+// Main Page
+// ============================================================
 export default function DiagnosisPage() {
-  const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [data, setData] = useState<FormData>(initialFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDone, setIsDone] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [step, setStep] = useState(1)
+  const [data, setData] = useState<FormData>(initialFormData)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDone, setIsDone] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const router = useRouter()
 
-  const onChange = (key: keyof FormData, value: any) =>
-    setData(prev => ({ ...prev, [key]: value }));
+  const updateForm = (patch: Partial<FormData>) => setData(prev => ({ ...prev, ...patch }))
 
-  const canProceed = (): boolean => {
-    if (step === 1) return data.birthYear >= 1940 && data.birthYear <= 2005;
-    if (step === 7) return !!(data.name && data.phone.length >= 10 && data.email && data.privacyAgree);
-    return true;
-  };
+  const canProceed = (() => {
+    if (step === 1) return !!(data.birthYear && data.birthMonth && data.retirementTargetAge && data.lifeExpectancy)
+    if (step === 5) return !!(data.jobType)
+    if (step === 7) return !!(data.name && data.phone && data.privacyAgree)
+    return true
+  })()
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
-    setSubmitError('');
+    setIsSubmitting(true)
+    setSubmitError('')
     try {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'save_only', formData: data }),
-      });
-      if (!res.ok) throw new Error('서버 오류가 발생했습니다.');
-      setIsDone(true);
-    } catch (e: any) {
-      setSubmitError(e.message || '제출 중 오류가 발생했습니다.');
+        body: JSON.stringify({ type: 'save_only', ...data }),
+      })
+      if (!res.ok) throw new Error('제출 실패')
+      setIsDone(true)
+    } catch {
+      setSubmitError('제출 중 오류가 발생했습니다. 다시 시도해 주세요.')
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
-  };
+  }
 
   if (isDone) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-blue-50 to-white px-6">
-        <div className="text-6xl mb-4">✅</div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">접수 완료!</h1>
-        <p className="text-gray-500 text-center mb-6">
-          재무 진단 결과를 이메일로 보내드립니다.<br />
-          보통 1~2 영업일 내에 발송됩니다.
-        </p>
-        <button onClick={() => router.push('/')}
-          className="bg-blue-600 text-white px-8 py-3 rounded-full font-medium hover:bg-blue-700 transition">
-          홈으로 돌아가기
-        </button>
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
+        <div className="bg-white rounded-[20px] p-8 max-w-sm w-full text-center shadow-sm">
+          <div className="text-5xl mb-4">✅</div>
+          <h2 className="text-[20px] font-bold text-[#1E293B] mb-3">접수 완료!</h2>
+          <p className="text-[14px] text-[#475569] mb-2">재무 진단 신청이 완료되었습니다.</p>
+          <p className="text-[13px] text-[#94A3B8] mb-6">담당자가 검토 후 연락드리겠습니다.</p>
+          <button onClick={() => router.push('/')}
+            className="w-full bg-[#1E3A5F] text-white py-3 rounded-[12px] text-[14px] font-semibold">
+            홈으로 돌아가기
+          </button>
+        </div>
       </div>
-    );
+    )
   }
 
-  const steps = [Step1, Step2, Step3, Step4, Step5, Step6, Step7];
-  const StepComponent = steps[step - 1];
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* 진행 바 */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-gray-500">Step {step} / {TOTAL_STEPS}</span>
-          <span className="text-xs text-blue-500 font-medium">
-            {['기본 정보', '자산 현황', '부채 현황', '수입/지출', '직업 정보', '은퇴 목표', '연락처'][step - 1]}
-          </span>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-1.5">
-          <div
-            className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
-            style={{ width: `${(step / TOTAL_STEPS) * 100}%` }}
-          />
-        </div>
-      </div>
-
-      {/* 콘텐츠 */}
+    <div className="min-h-screen bg-[#F8FAFC]">
       <div className="max-w-lg mx-auto px-4 py-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -30 }}
-            transition={{ duration: 0.25 }}
-          >
-            <StepComponent data={data} onChange={onChange} />
-          </motion.div>
-        </AnimatePresence>
-
-        {submitError && (
-          <div className="mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-            <p className="text-xs text-red-600">{submitError}</p>
-          </div>
-        )}
-
-        {/* 네비게이션 버튼 */}
-        <div className="flex gap-3 mt-8">
+        <div className="mb-6">
+          <h1 className="text-[22px] font-bold text-[#1E293B]">재무 진단</h1>
+          <p className="text-[13px] text-[#94A3B8] mt-1">Step {step} / {TOTAL_STEPS}</p>
+        </div>
+        <div className="w-full bg-[#E2E8F0] rounded-full h-1.5 mb-6">
+          <div className="bg-[#1E3A5F] h-1.5 rounded-full transition-all duration-300"
+            style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
+        </div>
+        <div className="bg-white rounded-[20px] p-6 shadow-sm mb-4">
+          <AnimatePresence mode="wait">
+            <motion.div key={step}
+              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+              {step === 1 && <Step1 data={data} onChange={updateForm} />}
+              {step === 2 && <Step2 data={data} onChange={updateForm} />}
+              {step === 3 && <Step3 data={data} onChange={updateForm} />}
+              {step === 4 && <Step4 data={data} onChange={updateForm} />}
+              {step === 5 && <Step5 data={data} onChange={updateForm} />}
+              {step === 6 && <Step6 data={data} onChange={updateForm} />}
+              {step === 7 && <Step7 data={data} onChange={updateForm} />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        <div className="flex gap-3">
           {step > 1 && (
             <button onClick={() => setStep(s => s - 1)}
-              className="flex-1 py-3 border border-gray-200 rounded-2xl text-gray-600 font-medium hover:bg-gray-50 transition">
+              className="flex-1 bg-white border border-[#CBD5E1] text-[#475569] py-3.5 rounded-[12px] text-[14px] font-semibold hover:bg-[#F8FAFC] transition-colors">
               이전
             </button>
           )}
           {step < TOTAL_STEPS ? (
-            <button
-              onClick={() => setStep(s => s + 1)}
-              disabled={!canProceed()}
-              className={`flex-1 py-3 rounded-2xl font-medium transition ${
-                canProceed()
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
+            <button onClick={() => { if (canProceed) setStep(s => s + 1) }} disabled={!canProceed}
+              className={`flex-1 py-3.5 rounded-[12px] text-[14px] font-semibold transition-all ${canProceed ? 'bg-[#1E3A5F] text-white hover:bg-[#1E3A5F]/90' : 'bg-[#E2E8F0] text-[#94A3B8] cursor-not-allowed'}`}>
               다음
             </button>
           ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={!canProceed() || isSubmitting}
-              className={`flex-1 py-3 rounded-2xl font-medium transition ${
-                canProceed() && !isSubmitting
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isSubmitting ? '제출 중...' : '진단 신청하기'}
+            <button onClick={handleSubmit} disabled={isSubmitting || !canProceed}
+              className={`flex-1 py-3.5 rounded-[12px] text-[14px] font-semibold transition-all ${isSubmitting || !canProceed ? 'bg-[#E2E8F0] text-[#94A3B8] cursor-not-allowed' : 'bg-[#1E3A5F] text-white hover:bg-[#1E3A5F]/90'}`}>
+              {isSubmitting ? '제출 중...' : '진단 제출'}
             </button>
           )}
         </div>
+        {submitError && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-[10px] text-[12px] text-red-600">
+            {submitError}
+          </div>
+        )}
       </div>
     </div>
-  );
+  )
 }
