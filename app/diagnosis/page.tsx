@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState } from 'react'
+import upjongRaw from '../../public/upjong.json'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 
@@ -445,14 +446,7 @@ function BusinessTypeSelector({
   const [inputCode, setInputCode] = useState(code || '')
   const [manualName, setManualName] = useState('')
   const [notFound, setNotFound] = useState(false)
-  const [upjongData, setUpjongData] = useState<{ code: string; name: string }[]>([])
-
-  useEffect(() => {
-    fetch('/upjong.json')
-      .then(r => r.json())
-      .then((data: { code: string; name: string }[]) => setUpjongData(data))
-      .catch(() => setUpjongData([]))
-  }, [])
+  const upjongData = upjongRaw as { code: string; name: string }[]
 
   const handleCodeChange = (val: string) => {
     const cleaned = val.replace(/\D/g, '').slice(0, 6)
@@ -1268,3 +1262,4 @@ export default function DiagnosisPage() {
   )
 }
              
+
