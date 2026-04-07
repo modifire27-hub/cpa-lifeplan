@@ -447,7 +447,7 @@ function BusinessTypeSelector({
   const [manualName, setManualName] = useState('')
   const [notFound, setNotFound] = useState(false)
   const upjongData = upjongRaw as { code: string; name: string }[]
-
+  console.log('test:', upjongData.length, upjongData.find(d=>d.code==='940306'))
   const handleCodeChange = (val: string) => {
     const cleaned = val.replace(/\D/g, '').slice(0, 6)
     setInputCode(cleaned)
